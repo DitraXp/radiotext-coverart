@@ -51,15 +51,6 @@ example `web/images/my-default-cover.png` — then set:
 defaultImage: '/images/my-default-cover.png'
 ```
 
-## Known limitations
-
-- RDS RadioText has no fixed format, so plenty of stations won't match
-  at all (jingles, ads, traffic info, scrolling news, station taglines
-  containing a stray dash, etc.). That's expected and by design — a
-  non-match just leaves whatever picture is already showing untouched
-  (unless it's the buffer that's currently on screen changing, per
-  above, in which case it clears).
-
 ## Uninstall
 
 Disable it in **Settings → Plugins**, stop the server, then delete
