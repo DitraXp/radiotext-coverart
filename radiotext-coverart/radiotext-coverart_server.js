@@ -1,4 +1,5 @@
-// RadioText Cover Art — server-side companion (v1.0)
+// RadioText Cover Art — server-side companion (v1.1)
+//
 
 const router = require('../../server/endpoints');
 
@@ -30,7 +31,7 @@ async function fetchWithTimeout(url, timeoutMs = 5000) {
     try {
         const response = await fetch(url, {
             signal: controller.signal,
-            headers: { 'User-Agent': 'fm-dx-webserver-radiotext-coverart-plugin/1.2' }
+            headers: { 'User-Agent': 'fm-dx-webserver-radiotext-coverart-plugin/1.1' }
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await response.json();
@@ -45,6 +46,7 @@ function normalize(s) {
         .toLowerCase()
         .normalize('NFKD')
         .replace(/[\u0300-\u036f]/g, '')
+        .replace(/['']/g, '')
         .replace(/[^a-z0-9]+/g, ' ')
         .trim();
 }
@@ -57,16 +59,17 @@ function fieldScore(candidate, wanted) {
 }
 
 function scoreCandidate(track, wantArtist, wantTitle) {
-    return fieldScore(normalize(track.artistName), normalize(wantArtist)) +
-           fieldScore(normalize(track.trackName), normalize(wantTitle));
+    const artistScore = fieldScore(normalize(track.artistName), normalize(wantArtist));
+    const titleScore = fieldScore(normalize(track.trackName), normalize(wantTitle));
+    return { artistScore, titleScore, total: artistScore + titleScore };
 }
 
 function pickBestMatch(results, wantArtist, wantTitle) {
     let best = null;
-    let bestScore = -1;
+    let bestScore = null;
     for (const track of results) {
         const score = scoreCandidate(track, wantArtist, wantTitle);
-        if (score > bestScore) {
+        if (!bestScore || score.total > bestScore.total) {
             bestScore = score;
             best = track;
         }
@@ -88,7 +91,7 @@ async function searchGeneral(artist, title, limit = 5) {
     return (data && Array.isArray(data.results)) ? data.results : [];
 }
 
-const MIN_ACCEPT_SCORE = 2;
+const MIN_TITLE_SCORE = 2;
 
 router.get('/radiotext-coverart/get', async (req, res) => {
     const artist = (req.query.artist || '').toString().trim().slice(0, 100);
@@ -111,7 +114,7 @@ router.get('/radiotext-coverart/get', async (req, res) => {
             const artistResults = await searchByArtist(artist);
             if (artistResults.length > 0) {
                 const match = pickBestMatch(artistResults, artist, title);
-                if (match.track && match.score >= MIN_ACCEPT_SCORE) best = match.track;
+                if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) best = match.track;
             }
         }
 
@@ -119,7 +122,7 @@ router.get('/radiotext-coverart/get', async (req, res) => {
             const generalResults = await searchGeneral(artist, title);
             if (generalResults.length > 0) {
                 const match = pickBestMatch(generalResults, artist, title);
-                if (match.track && match.score >= MIN_ACCEPT_SCORE) best = match.track;
+                if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) best = match.track;
             }
         }
 

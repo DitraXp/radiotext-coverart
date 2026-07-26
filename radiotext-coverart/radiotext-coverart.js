@@ -1,4 +1,5 @@
-// RadioText Cover Art — front-end (v1.0)
+/* global $ */
+// RadioText Cover Art — front-end (v1.1)
 
 (function () {
 
@@ -63,8 +64,6 @@
                     margin-left: 10px;
                     margin-right: 10px;
                     display: flex;
-                    align-items: center;
-                    justify-content: center;
                     overflow: hidden;
                     flex-shrink: 0;
                     transition: 0.3s ease background-color;
@@ -76,16 +75,14 @@
                     display: block;
                     object-fit: cover;
                     border-radius: 8px;
+                    flex-shrink: 0;
                 }
-                #rt-coverart-caption {
-                    display: none;
-                }
-
                 @media only screen and (min-width: 769px) {
                     #rt-coverart-container {
                         width: ${boxSize}px;
                         min-width: ${boxSize}px;
                         height: 100px;
+                        position: relative;
                         backdrop-filter: blur(5px);
                         padding: 8px;
                         box-sizing: border-box;
@@ -94,8 +91,28 @@
                         width: 100%;
                         height: 100%;
                     }
+                    #rt-coverart-caption {
+                        position: absolute;
+                        inset: 8px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        text-align: center;
+                        background-color: rgba(0, 0, 0, 0.72);
+                        color: #fff;
+                        border-radius: 8px;
+                        padding: 6px;
+                        font-size: 11px;
+                        line-height: 1.3;
+                        overflow: hidden;
+                        opacity: 0;
+                        pointer-events: none;
+                        transition: 0.2s ease opacity;
+                    }
+                    #rt-coverart-container:hover #rt-coverart-caption {
+                        opacity: 1;
+                    }
                 }
-
                 @media only screen and (max-width: 768px) {
                     #rt-coverart-container {
                         width: 90%;
@@ -106,6 +123,8 @@
                         backdrop-filter: blur(5px);
                         padding: 8px;
                         box-sizing: border-box;
+                        flex-direction: row;
+                        align-items: center;
                         justify-content: flex-start;
                         order: 10;
                     }
@@ -119,13 +138,12 @@
                         -webkit-box-orient: vertical;
                         -webkit-line-clamp: 3;
                         overflow: hidden;
+                        opacity: 0.85;
                         margin-left: 12px;
                         text-align: left;
                         font-size: 13px;
                         line-height: 1.35;
-                        opacity: 0.85;
                     }
-
                     #rt-container {
                         background-color: var(--color-1-transparent) !important;
                         backdrop-filter: blur(5px) !important;
@@ -134,7 +152,6 @@
             `)
             .appendTo('head');
     }
-
 
     function createContainer() {
         if ($('#rt-coverart-container').length) return true;
@@ -145,17 +162,12 @@
         const defaultUrl = CONFIG.defaultImage || DEFAULT_IMAGE_URL;
 
         const html =
-            '<div id="rt-coverart-container" class="tooltip" data-tooltip-placement="bottom" data-tooltip="' + WAITING_TOOLTIP + '">' +
+            '<div id="rt-coverart-container">' +
                 '<img src="' + defaultUrl + '" alt="Cover art">' +
                 '<div id="rt-coverart-caption">' + WAITING_TOOLTIP + '</div>' +
             '</div>';
 
         $rtContainer.after(html);
-
-        const $box = $('#rt-coverart-container');
-        if (typeof initTooltips === 'function') {
-            initTooltips($box);
-        }
         return true;
     }
 
@@ -164,7 +176,6 @@
         if (!$box.length) return;
         const text = tooltipText || WAITING_TOOLTIP;
         $box.find('img').attr('src', url);
-        $box.data('tooltip', text);
         $box.find('#rt-coverart-caption').text(text);
     }
 
@@ -183,20 +194,38 @@
         clearToDefault();
     }
 
-    function parseArtistTitle(text) {
+    function stripKnownPrefix(text) {
+        const match = text.match(/^([^:]{1,15}):\s*(.+)$/);
+        if (!match) return text;
+        const remainder = match[2];
+        if (/\s[-–—]\s/.test(remainder)) {
+            return remainder.trim();
+        }
+        return text;
+    }
+
+    function collapseRepeat(text) {
+        const match = text.match(/^(.+?)\s*(?:[-–—,;]\s*)?\1$/i);
+        return match ? match[1].trim() : text;
+    }
+
+    function parseArtistTitle(rawText) {
+        if (!rawText) return null;
+
+        let text = rawText.replace(/\s+/g, ' ').trim();
+        text = text.split('|')[0].trim();
+        text = stripKnownPrefix(text);
+        text = collapseRepeat(text);
+
         if (!text || text.length < 4) return null;
 
-        const cleaned = text.split('|')[0].trim();
-        if (!cleaned) return null;
-
         const separatorPattern = /\s[-–—]\s/;
-        if (!separatorPattern.test(cleaned)) return null;
+        if (!separatorPattern.test(text)) return null;
 
-        const parts = cleaned.split(separatorPattern);
-        if (parts.length !== 2) return null;
+        const match = separatorPattern.exec(text);
+        const left = text.slice(0, match.index).trim();
+        const right = text.slice(match.index + match[0].length).trim();
 
-        const left = parts[0].trim();
-        const right = parts[1].trim();
         if (!left || !right) return null;
         if (left.length < 2 || right.length < 2) return null;
         if (left.length > 60 || right.length > 60) return null;
@@ -277,8 +306,14 @@
             lastFreq = parsedData.freq;
         }
 
-        if (typeof parsedData.rt0 !== 'undefined') processChannel('rt0', parsedData.rt0);
-        if (typeof parsedData.rt1 !== 'undefined') processChannel('rt1', parsedData.rt1);
+        const liveIsRt0 = parsedData.rt_flag === 0;
+        const order = liveIsRt0 ? ['rt1', 'rt0'] : ['rt0', 'rt1'];
+
+        order.forEach(function (channelName) {
+            if (typeof parsedData[channelName] !== 'undefined') {
+                processChannel(channelName, parsedData[channelName]);
+            }
+        });
     }
 
     function attachSocketListener() {
