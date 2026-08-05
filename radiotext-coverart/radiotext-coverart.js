@@ -1,5 +1,5 @@
 /* global $ */
-// RadioText Cover Art — front-end (v1.1)
+// RadioText Cover Art — front-end (v1.2)
 
 (function () {
 
@@ -13,12 +13,11 @@
         // and keeps external API calls to a minimum.
         stableDelay: 2500,
 
-        // Most stations format RadioText as "ARTIST - TITLE". Some do the
-        // reverse ("TITLE - ARTIST"). Flip this if your station does that.
-        swapArtistTitle: false,
-
-        // Container size in pixels (desktop only). On phones it becomes a
-        // full-width stacked panel automatically, like the other panels.
+        // Container size in pixels (desktop only - used as both a
+        // fallback before heights are measured, and a minimum so the
+        // cover art never shrinks smaller than a reasonable thumbnail
+        // size even if TX info happens to be short). On phones it
+        // becomes a full-width stacked panel automatically.
         boxSize: 100,
 
         // Picture shown when there's no song currently identified. Leave
@@ -57,41 +56,85 @@
         $('<style>')
             .prop('type', 'text/css')
             .html(`
-                #rt-coverart-container {
-                    background-color: var(--color-1-transparent);
+                .rt-coverart-box {
                     border-radius: 15px;
-                    margin-top: 20px;
-                    margin-left: 10px;
-                    margin-right: 10px;
                     display: flex;
                     overflow: hidden;
                     flex-shrink: 0;
+                    margin-top: 20px;
                     transition: 0.3s ease background-color;
                 }
-                #rt-coverart-container:hover {
-                    background-color: var(--color-2-transparent);
-                }
-                #rt-coverart-container img {
+                .rt-coverart-box img {
                     display: block;
                     object-fit: cover;
-                    border-radius: 8px;
+                    border-radius: 4px;
                     flex-shrink: 0;
                 }
+
+                #rt-coverart-container-phone {
+                    display: none;
+                }
+                @media only screen and (max-width: 768px) {
+                    #rt-coverart-container-phone {
+                        display: flex;
+                        width: 90%;
+                        margin: auto;
+                        margin-bottom: 20px;
+                        min-height: 70px;
+                        background-color: var(--color-1-transparent);
+                        backdrop-filter: blur(5px);
+                        padding: 8px;
+                        box-sizing: border-box;
+                        flex-direction: row;
+                        align-items: center;
+                        justify-content: flex-start;
+                        order: 10;
+                    }
+                    #rt-coverart-container-phone img {
+                        width: 62px;
+                        height: 62px;
+                        min-width: 62px;
+                    }
+                    #rt-coverart-container-phone .rt-coverart-caption {
+                        display: -webkit-box;
+                        -webkit-box-orient: vertical;
+                        -webkit-line-clamp: 3;
+                        overflow: hidden;
+                        opacity: 0.85;
+                        margin-left: 12px;
+                        text-align: left;
+                        font-size: 13px;
+                        line-height: 1.35;
+                    }
+                    #rt-container {
+                        background-color: var(--color-1-transparent) !important;
+                        backdrop-filter: blur(5px) !important;
+                    }
+                }
+
+                #rt-coverart-container-desktop {
+                    display: none;
+                }
                 @media only screen and (min-width: 769px) {
-                    #rt-coverart-container {
+                    #rt-coverart-container-desktop {
+                        display: flex;
                         width: ${boxSize}px;
-                        min-width: ${boxSize}px;
-                        height: 100px;
+                        height: ${boxSize}px;
+                        margin: 20px auto 0 auto;
                         position: relative;
+                        background-color: var(--color-1-transparent);
                         backdrop-filter: blur(5px);
                         padding: 8px;
                         box-sizing: border-box;
                     }
-                    #rt-coverart-container img {
+                    #rt-coverart-container-desktop:hover {
+                        background-color: var(--color-2-transparent);
+                    }
+                    #rt-coverart-container-desktop img {
                         width: 100%;
                         height: 100%;
                     }
-                    #rt-coverart-caption {
+                    #rt-coverart-container-desktop .rt-coverart-caption {
                         position: absolute;
                         inset: 8px;
                         display: flex;
@@ -109,74 +152,96 @@
                         pointer-events: none;
                         transition: 0.2s ease opacity;
                     }
-                    #rt-coverart-container:hover #rt-coverart-caption {
+                    #rt-coverart-container-desktop:hover .rt-coverart-caption {
                         opacity: 1;
-                    }
-                }
-                @media only screen and (max-width: 768px) {
-                    #rt-coverart-container {
-                        width: 90%;
-                        margin: auto;
-                        margin-bottom: 20px;
-                        min-height: 70px;
-                        background-color: var(--color-1-transparent);
-                        backdrop-filter: blur(5px);
-                        padding: 8px;
-                        box-sizing: border-box;
-                        flex-direction: row;
-                        align-items: center;
-                        justify-content: flex-start;
-                        order: 10;
-                    }
-                    #rt-coverart-container img {
-                        width: 62px;
-                        height: 62px;
-                        min-width: 62px;
-                    }
-                    #rt-coverart-caption {
-                        display: -webkit-box;
-                        -webkit-box-orient: vertical;
-                        -webkit-line-clamp: 3;
-                        overflow: hidden;
-                        opacity: 0.85;
-                        margin-left: 12px;
-                        text-align: left;
-                        font-size: 13px;
-                        line-height: 1.35;
-                    }
-                    #rt-container {
-                        background-color: var(--color-1-transparent) !important;
-                        backdrop-filter: blur(5px) !important;
                     }
                 }
             `)
             .appendTo('head');
     }
 
-    function createContainer() {
-        if ($('#rt-coverart-container').length) return true;
+    function boxHtml(id, defaultUrl) {
+        return '<div id="' + id + '" class="rt-coverart-box">' +
+                    '<img src="' + defaultUrl + '" alt="Cover art">' +
+                    '<div class="rt-coverart-caption">' + WAITING_TOOLTIP + '</div>' +
+                '</div>';
+    }
 
-        const $rtContainer = $('#rt-container');
-        if (!$rtContainer.length) return false;
-
+    function createContainers() {
         const defaultUrl = CONFIG.defaultImage || DEFAULT_IMAGE_URL;
+        let ok = true;
 
-        const html =
-            '<div id="rt-coverart-container">' +
-                '<img src="' + defaultUrl + '" alt="Cover art">' +
-                '<div id="rt-coverart-caption">' + WAITING_TOOLTIP + '</div>' +
-            '</div>';
+        if (!$('#rt-coverart-container-phone').length) {
+            const $rtContainer = $('#rt-container');
+            if ($rtContainer.length) {
+                $rtContainer.after(boxHtml('rt-coverart-container-phone', defaultUrl));
+            } else {
+                ok = false;
+            }
+        }
 
-        $rtContainer.after(html);
-        return true;
+        if (!$('#rt-coverart-container-desktop').length) {
+            const $afList = $('#af-list');
+            const $afWrapper = $afList.length ? $afList.closest('.panel-100') : $();
+            const $afColumn = $afWrapper.length ? $afWrapper.parent() : $();
+            if ($afWrapper.length && $afColumn.length) {
+                $afColumn.css('flex-direction', 'column');
+                $afWrapper.after(boxHtml('rt-coverart-container-desktop', defaultUrl));
+            } else {
+                ok = false;
+            }
+        }
+
+        return ok;
+    }
+
+    function matchDesktopHeights() {
+        if (window.innerWidth <= 768) return;
+
+        const $desktopBox = $('#rt-coverart-container-desktop');
+        const $afWrapper = $('#af-list').closest('.panel-100');
+        const $afColumn = $afWrapper.length ? $afWrapper.parent() : $();
+        const $txInfo = $('#data-station-container').length ? $('#data-station-container').parent() : $();
+
+        if (!$desktopBox.length || !$afWrapper.length || !$afColumn.length || !$txInfo.length) return;
+
+        const txHeight = $txInfo.outerHeight();
+        if (!txHeight) return;
+
+        const coverSize = Math.max(txHeight, CONFIG.boxSize);
+        $desktopBox.css({ width: coverSize + 'px', height: coverSize + 'px' });
+
+        const afColumnTop = $afColumn.offset().top;
+        const txInfoTop = $txInfo.offset().top;
+        const afWrapperMarginTop = parseFloat($afWrapper.css('margin-top')) || 0;
+        const coverMarginTop = parseFloat($desktopBox.css('margin-top')) || 0;
+
+        const afHeight = (txInfoTop - afColumnTop) - afWrapperMarginTop - coverMarginTop;
+        if (afHeight > 0) {
+            $afWrapper.css('height', afHeight + 'px');
+
+            const $afHeader = $afWrapper.children('h2').first();
+            const headerHeight = $afHeader.length ? $afHeader.outerHeight(true) : 0;
+            const listHeight = afHeight - headerHeight;
+            if (listHeight > 0) {
+                $('#af-list').css('max-height', listHeight + 'px');
+            }
+        }
+    }
+
+    let lastHeightCheck = 0;
+
+    function maybeMatchDesktopHeights() {
+        const now = Date.now();
+        if (now - lastHeightCheck < 1000) return;
+        lastHeightCheck = now;
+        matchDesktopHeights();
     }
 
     function showArt(url, tooltipText) {
-        const $box = $('#rt-coverart-container');
-        if (!$box.length) return;
         const text = tooltipText || WAITING_TOOLTIP;
-        $box.find('img').attr('src', url);
-        $box.find('#rt-coverart-caption').text(text);
+        $('.rt-coverart-box img').attr('src', url);
+        $('.rt-coverart-box .rt-coverart-caption').text(text);
     }
 
     function clearToDefault() {
@@ -230,9 +295,7 @@
         if (left.length < 2 || right.length < 2) return null;
         if (left.length > 60 || right.length > 60) return null;
 
-        return CONFIG.swapArtistTitle
-            ? { artist: right, title: left }
-            : { artist: left, title: right };
+        return { artist: left, title: right };
     }
 
     function applyResult(requestId, channelName, key, result) {
@@ -299,6 +362,8 @@
     }
 
     function handleParsedData(parsedData) {
+        maybeMatchDesktopHeights();
+
         if (typeof parsedData.freq !== 'undefined') {
             if (lastFreq !== null && parsedData.freq !== lastFreq) {
                 resetForNewStation();
@@ -337,12 +402,23 @@
         });
     }
 
+    let resizeTimer = null;
+
     function init() {
         injectStyles();
-        if (!createContainer()) {
+        if (!createContainers()) {
             setTimeout(init, 250);
             return;
         }
+
+        matchDesktopHeights();
+        setTimeout(matchDesktopHeights, 1000);
+
+        $(window).on('resize', function () {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(matchDesktopHeights, 200);
+        });
+
         attachSocketListener();
     }
 

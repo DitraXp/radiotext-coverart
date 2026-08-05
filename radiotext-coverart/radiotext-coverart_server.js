@@ -1,5 +1,4 @@
-// RadioText Cover Art — server-side companion (v1.1)
-//
+// RadioText Cover Art — server-side companion (v1.2)
 
 const router = require('../../server/endpoints');
 
@@ -31,7 +30,7 @@ async function fetchWithTimeout(url, timeoutMs = 5000) {
     try {
         const response = await fetch(url, {
             signal: controller.signal,
-            headers: { 'User-Agent': 'fm-dx-webserver-radiotext-coverart-plugin/1.1' }
+            headers: { 'User-Agent': 'fm-dx-webserver-radiotext-coverart-plugin/1.2' }
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await response.json();
@@ -93,6 +92,30 @@ async function searchGeneral(artist, title, limit = 5) {
 
 const MIN_TITLE_SCORE = 2;
 
+async function tryInterpretation(artist, title) {
+    if (artist) {
+        try {
+            const artistResults = await searchByArtist(artist);
+            if (artistResults.length > 0) {
+                const match = pickBestMatch(artistResults, artist, title);
+                if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) return match.track;
+            }
+        } catch (err) {
+        }
+    }
+
+    try {
+        const generalResults = await searchGeneral(artist, title);
+        if (generalResults.length > 0) {
+            const match = pickBestMatch(generalResults, artist, title);
+            if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) return match.track;
+        }
+    } catch (err) {
+    }
+
+    return null;
+}
+
 router.get('/radiotext-coverart/get', async (req, res) => {
     const artist = (req.query.artist || '').toString().trim().slice(0, 100);
     const title = (req.query.title || '').toString().trim().slice(0, 100);
@@ -107,46 +130,36 @@ router.get('/radiotext-coverart/get', async (req, res) => {
         return res.json(cached);
     }
 
-    try {
-        let best = null;
+    let best = await tryInterpretation(artist, title);
+    let resultArtist = artist;
+    let resultTitle = title;
 
-        if (artist) {
-            const artistResults = await searchByArtist(artist);
-            if (artistResults.length > 0) {
-                const match = pickBestMatch(artistResults, artist, title);
-                if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) best = match.track;
-            }
-        }
-
-        if (!best) {
-            const generalResults = await searchGeneral(artist, title);
-            if (generalResults.length > 0) {
-                const match = pickBestMatch(generalResults, artist, title);
-                if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) best = match.track;
-            }
-        }
-
-        let result = { found: false };
-
+    if (!best) {
+        best = await tryInterpretation(title, artist);
         if (best) {
-            const artwork = (best.artworkUrl100 || '').replace('100x100bb', '300x300bb');
-
-            if (artwork) {
-                result = {
-                    found: true,
-                    artwork,
-                    trackName: best.trackName || title,
-                    artistName: best.artistName || artist,
-                    collectionName: best.collectionName || ''
-                };
-            }
+            resultArtist = title;
+            resultTitle = artist;
         }
-
-        cacheSet(cacheKey, result);
-        res.json(result);
-    } catch (err) {
-        res.json({ found: false, error: err.message });
     }
+
+    let result = { found: false };
+
+    if (best) {
+        const artwork = (best.artworkUrl100 || '').replace('100x100bb', '300x300bb');
+
+        if (artwork) {
+            result = {
+                found: true,
+                artwork,
+                trackName: best.trackName || resultTitle,
+                artistName: best.artistName || resultArtist,
+                collectionName: best.collectionName || ''
+            };
+        }
+    }
+
+    cacheSet(cacheKey, result);
+    res.json(result);
 });
 
 module.exports = {};
