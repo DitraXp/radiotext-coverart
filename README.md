@@ -2,7 +2,7 @@
 
 Adds its own small container between the RADIOTEXT panel and the TX info
 panel and shows cover art there when it spots a song announcement in the
-RDS RadioText ("Artist - Title"). A default picture is shown whenever no
+RDS RadioText. A default picture is shown whenever no
 song is currently identified.
 
 Artwork comes from the free, keyless iTunes Search API and is cached on
@@ -23,7 +23,7 @@ the server for an hour.
    ```
    (`README.md` doesn't need to be copied — it's just documentation.)
 4. Start the webserver. You should see a console line like:
-   `Plugin RadioText Cover Art 1.1 initialized successfully.`
+   `Plugin RadioText Cover Art 1.2 initialized successfully.`
 5. Make sure it's enabled under admin **Settings → Plugins**.
 6. Restart the webserver once more (server-side scripts load at startup)
    and reload the page in your browser.
