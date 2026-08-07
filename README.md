@@ -36,7 +36,6 @@ Open `plugins/radiotext-coverart/radiotext-coverart.js` and edit the
 | Setting | Default | What it does |
 |---|---|---|
 | `stableDelay` | `2500` | Milliseconds a given RT buffer must stay unchanged before it's looked up |
-| `swapArtistTitle` | `false` | Set to `true` if your station publishes "Title - Artist" instead of "Artist - Title" |
 | `boxSize` | `100` | Container size in pixels (desktop). Phones automatically get a full-width stacked panel |
 | `defaultImage` | `null` | Picture shown when no song is identified. `null` = built-in placeholder icon, or set a path to your own image (see below) |
 
