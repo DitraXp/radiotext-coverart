@@ -1,4 +1,4 @@
-// RadioText Cover Art — server-side companion (v1.3)
+// RadioText Cover Art — server-side companion (v1.3.1)
 
 const router = require('../../server/endpoints');
 
@@ -50,17 +50,41 @@ function normalize(s) {
         .trim();
 }
 
+function cleanTitle(s) {
+    const text = (s || '').toString();
+    const cleaned = text
+        .replace(/\s*[\(\[].*$/, '')
+        .replace(/\s+[-\u2013\u2014]\s.*$/, '')
+        .replace(/\s+(?:feat\.?|ft\.?|featuring)\s.*$/i, '')
+        .trim();
+    return cleaned || text;
+}
+
 function fieldScore(candidate, wanted) {
     if (!candidate || !wanted) return 0;
     if (candidate === wanted) return 3;
-    if (candidate.includes(wanted) || wanted.includes(candidate)) return 2;
+    if (candidate.includes(wanted) || wanted.includes(candidate)) {
+        const shorter = Math.min(candidate.length, wanted.length);
+        const longer = Math.max(candidate.length, wanted.length);
+        return shorter / longer >= 0.5 ? 2 : 1;
+    }
     return 0;
+}
+
+function artistMatches(candidateArtist, wantedArtist) {
+    const c = normalize(candidateArtist);
+    const w = normalize(wantedArtist);
+    if (!c || !w) return false;
+    if (c.includes(w) || w.includes(c)) return true;
+    const cw = new Set(c.split(' ').filter(x => x.length >= 3));
+    return w.split(' ').filter(x => x.length >= 3).some(x => cw.has(x));
 }
 
 function scoreCandidate(track, wantArtist, wantTitle) {
     const artistScore = fieldScore(normalize(track.artistName), normalize(wantArtist));
-    const titleScore = fieldScore(normalize(track.trackName), normalize(wantTitle));
-    return { artistScore, titleScore, total: artistScore + titleScore };
+    const titleScore = fieldScore(normalize(cleanTitle(track.trackName)), normalize(cleanTitle(wantTitle)));
+    const artistOk = artistMatches(track.artistName, wantArtist);
+    return { artistScore, titleScore, artistOk, total: artistScore + titleScore };
 }
 
 function pickBestMatch(results, wantArtist, wantTitle) {
@@ -68,6 +92,7 @@ function pickBestMatch(results, wantArtist, wantTitle) {
     let bestScore = null;
     for (const track of results) {
         const score = scoreCandidate(track, wantArtist, wantTitle);
+        if (score.titleScore < 2 || !score.artistOk) continue;
         if (!bestScore || score.total > bestScore.total) {
             bestScore = score;
             best = track;

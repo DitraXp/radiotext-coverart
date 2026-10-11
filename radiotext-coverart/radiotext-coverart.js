@@ -1,5 +1,5 @@
 /* global $ */
-// RadioText Cover Art — front-end (v1.3)
+// RadioText Cover Art — front-end (v1.3.1)
 
 (function () {
 
