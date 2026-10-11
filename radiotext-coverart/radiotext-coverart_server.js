@@ -1,4 +1,4 @@
-// RadioText Cover Art — server-side companion (v1.2)
+// RadioText Cover Art — server-side companion (v1.3)
 
 const router = require('../../server/endpoints');
 
@@ -30,7 +30,7 @@ async function fetchWithTimeout(url, timeoutMs = 5000) {
     try {
         const response = await fetch(url, {
             signal: controller.signal,
-            headers: { 'User-Agent': 'fm-dx-webserver-radiotext-coverart-plugin/1.2' }
+            headers: { 'User-Agent': 'fm-dx-webserver-radiotext-coverart-plugin/1.1' }
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await response.json();
@@ -76,26 +76,76 @@ function pickBestMatch(results, wantArtist, wantTitle) {
     return { track: best, score: bestScore };
 }
 
-async function searchByArtist(artist, limit = 25) {
-    const term = encodeURIComponent(artist);
-    const url = `https://itunes.apple.com/search?term=${term}&attribute=artistTerm&entity=song&limit=${limit}`;
-    const data = await fetchWithTimeout(url);
-    return (data && Array.isArray(data.results)) ? data.results : [];
+function fromItunes(t) {
+    const art100 = t.artworkUrl100 || '';
+    return {
+        artistName: t.artistName || '',
+        trackName: t.trackName || '',
+        collectionName: t.collectionName || '',
+        year: t.releaseDate ? String(t.releaseDate).slice(0, 4) : '',
+        artwork: art100.replace('100x100bb', '300x300bb'),
+        artworkBig: art100.replace('100x100bb', '600x600bb'),
+        storeUrl: t.trackViewUrl || '',
+        source: 'Apple Music'
+    };
 }
 
-async function searchGeneral(artist, title, limit = 5) {
-    const term = encodeURIComponent(`${artist} ${title}`.trim());
-    const url = `https://itunes.apple.com/search?term=${term}&entity=song&limit=${limit}`;
-    const data = await fetchWithTimeout(url);
-    return (data && Array.isArray(data.results)) ? data.results : [];
+function fromDeezer(t) {
+    const album = t.album || {};
+    return {
+        artistName: (t.artist && t.artist.name) || '',
+        trackName: t.title || '',
+        collectionName: album.title || '',
+        year: '',
+        artwork: album.cover_medium || '',
+        artworkBig: album.cover_big || album.cover_medium || '',
+        storeUrl: t.link || '',
+        source: 'Deezer'
+    };
 }
+
+const providers = {
+    itunes: {
+        async byArtist(artist) {
+            const url = `https://itunes.apple.com/search?term=${encodeURIComponent(artist)}&attribute=artistTerm&entity=song&limit=25`;
+            const data = await fetchWithTimeout(url);
+            return ((data && data.results) || []).map(fromItunes);
+        },
+        async general(text, limit = 5) {
+            const url = `https://itunes.apple.com/search?term=${encodeURIComponent(text)}&entity=song&limit=${limit}`;
+            const data = await fetchWithTimeout(url);
+            return ((data && data.results) || []).map(fromItunes);
+        }
+    },
+    deezer: {
+        async byArtist(artist) {
+            const url = `https://api.deezer.com/search?q=${encodeURIComponent(`artist:"${artist}"`)}&limit=25`;
+            const data = await fetchWithTimeout(url);
+            return ((data && data.data) || []).map(fromDeezer);
+        },
+        async general(text, limit = 5) {
+            const url = `https://api.deezer.com/search?q=${encodeURIComponent(text)}&limit=${limit}`;
+            const data = await fetchWithTimeout(url);
+            return ((data && data.data) || []).map(fromDeezer);
+        }
+    }
+};
+
+const PROVIDER_ORDER = ['itunes', 'deezer'];
 
 const MIN_TITLE_SCORE = 2;
 
-async function tryInterpretation(artist, title) {
+function leadArtist(artist) {
+    const first = artist.split(/\s*(?:\/|;|,|&|\+|\bfeat\.?|\bft\.?|\bfeaturing\b|\bvs\.?)\s*/i)[0].trim();
+    return first || artist;
+}
+
+async function tryInterpretation(provider, rawArtist, title) {
+    const artist = leadArtist(rawArtist);
+
     if (artist) {
         try {
-            const artistResults = await searchByArtist(artist);
+            const artistResults = await provider.byArtist(artist);
             if (artistResults.length > 0) {
                 const match = pickBestMatch(artistResults, artist, title);
                 if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) return match.track;
@@ -105,7 +155,7 @@ async function tryInterpretation(artist, title) {
     }
 
     try {
-        const generalResults = await searchGeneral(artist, title);
+        const generalResults = await provider.general(`${artist} ${title}`.trim());
         if (generalResults.length > 0) {
             const match = pickBestMatch(generalResults, artist, title);
             if (match.track && match.score.titleScore >= MIN_TITLE_SCORE) return match.track;
@@ -116,7 +166,68 @@ async function tryInterpretation(artist, title) {
     return null;
 }
 
+async function freeTextOnProvider(provider, q, words) {
+    let results;
+    try {
+        results = await provider.general(q, 15);
+    } catch (err) {
+        return null;
+    }
+
+    let best = null;
+    let bestExtra = Infinity;
+    for (const track of results) {
+        const candWords = normalize(`${track.artistName} ${track.trackName}`).split(' ').filter(Boolean);
+        const set = new Set(candWords);
+        if (!words.every(w => set.has(w))) continue;
+        const extra = candWords.filter(w => !words.includes(w)).length;
+        if (extra < bestExtra) {
+            bestExtra = extra;
+            best = track;
+        }
+    }
+    return best;
+}
+
+async function freeTextLookup(q) {
+    const words = normalize(q).split(' ').filter(Boolean);
+    if (words.length < 2) return null;
+    for (const name of PROVIDER_ORDER) {
+        const found = await freeTextOnProvider(providers[name], q, words);
+        if (found) return found;
+    }
+    return null;
+}
+
+function buildResult(best, fallbackArtist, fallbackTitle) {
+    if (!best || !best.artwork) return { found: false };
+    return {
+        found: true,
+        artwork: best.artwork,
+        artworkBig: best.artworkBig || best.artwork,
+        trackName: best.trackName || fallbackTitle,
+        artistName: best.artistName || fallbackArtist,
+        collectionName: best.collectionName || '',
+        year: best.year || '',
+        storeUrl: best.storeUrl || '',
+        source: best.source || ''
+    };
+}
+
 router.get('/radiotext-coverart/get', async (req, res) => {
+    const q = (req.query.q || '').toString().trim().slice(0, 120);
+
+    if (q) {
+        const qKey = `q|||${normalize(q).split(' ').sort().join(' ')}`;
+        const cachedQ = cacheGet(qKey);
+        if (cachedQ) return res.json(cachedQ);
+
+        const found = await freeTextLookup(q);
+        const qResult = buildResult(found, '', q);
+        cacheSet(qKey, qResult);
+        return res.json(qResult);
+    }
+
     const artist = (req.query.artist || '').toString().trim().slice(0, 100);
     const title = (req.query.title || '').toString().trim().slice(0, 100);
 
@@ -130,34 +241,24 @@ router.get('/radiotext-coverart/get', async (req, res) => {
         return res.json(cached);
     }
 
-    let best = await tryInterpretation(artist, title);
+    let best = null;
     let resultArtist = artist;
     let resultTitle = title;
 
-    if (!best) {
-        best = await tryInterpretation(title, artist);
-        if (best) {
-            resultArtist = title;
-            resultTitle = artist;
+    for (const name of PROVIDER_ORDER) {
+        const provider = providers[name];
+        best = await tryInterpretation(provider, artist, title);
+        if (!best) {
+            best = await tryInterpretation(provider, title, artist);
+            if (best) {
+                resultArtist = title;
+                resultTitle = artist;
+            }
         }
+        if (best) break;
     }
 
-    let result = { found: false };
-
-    if (best) {
-        const artwork = (best.artworkUrl100 || '').replace('100x100bb', '300x300bb');
-
-        if (artwork) {
-            result = {
-                found: true,
-                artwork,
-                trackName: best.trackName || resultTitle,
-                artistName: best.artistName || resultArtist,
-                collectionName: best.collectionName || ''
-            };
-        }
-    }
-
+    const result = buildResult(best, resultArtist, resultTitle);
     cacheSet(cacheKey, result);
     res.json(result);
 });

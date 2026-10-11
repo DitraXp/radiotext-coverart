@@ -1,5 +1,5 @@
 /* global $ */
-// RadioText Cover Art — front-end (v1.2)
+// RadioText Cover Art — front-end (v1.3)
 
 (function () {
 
@@ -19,6 +19,11 @@
         // size even if TX info happens to be short). On phones it
         // becomes a full-width stacked panel automatically.
         boxSize: 100,
+
+        // Empty space (px) kept below the AF list, inside the AF card, so
+        // the last visible frequency isn't cut off by the card's rounded
+        // bottom corners.
+        afBottomGap: 16,
 
         // Picture shown when there's no song currently identified. Leave
         // as null to use the built-in placeholder, or point it at your
@@ -67,9 +72,119 @@
                 .rt-coverart-box img {
                     display: block;
                     object-fit: cover;
-                    border-radius: 4px;
+                    border-radius: 8px;
+                    flex-shrink: 0;
+                    cursor: pointer;
+                }
+
+                #rt-coverart-modal {
+                    display: none;
+                    position: fixed;
+                    inset: 0;
+                    background-color: rgba(0, 0, 0, 0.85);
+                    z-index: 10000;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                    box-sizing: border-box;
+                    cursor: pointer;
+                }
+                #rt-coverart-modal.rt-coverart-modal-visible {
+                    display: flex;
+                }
+                #rt-coverart-modal img {
+                    max-width: 100%;
+                    max-height: 55vh;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+                    cursor: default;
+                }
+                .rt-ca-card {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 12px;
+                    max-width: min(90vw, 460px);
+                    color: #fff;
+                    text-align: center;
+                    cursor: default;
+                }
+                .rt-ca-title { font-size: 20px; font-weight: 600; line-height: 1.25; }
+                .rt-ca-artist { font-size: 16px; opacity: 0.9; }
+                .rt-ca-album { font-size: 13px; opacity: 0.65; }
+                .rt-ca-links { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+                .rt-ca-links a, .rt-ca-btn {
+                    background: rgba(255, 255, 255, 0.14);
+                    color: #fff;
+                    text-decoration: none;
+                    border: 0;
+                    border-radius: 999px;
+                    padding: 7px 14px;
+                    font-size: 13px;
+                    cursor: pointer;
+                }
+                .rt-ca-links a:hover, .rt-ca-btn:hover { background: rgba(255, 255, 255, 0.28); }
+
+                .rt-coverart-menu-btn {
+                    background: rgba(0, 0, 0, 0.5);
+                    color: #fff;
+                    border: 0;
+                    border-radius: 50%;
+                    width: 24px;
+                    height: 24px;
+                    min-width: 24px;
+                    padding: 0;
+                    font-size: 13px;
+                    line-height: 24px;
+                    cursor: pointer;
+                    z-index: 2;
                     flex-shrink: 0;
                 }
+                .rt-coverart-menu-btn:hover { background: rgba(0, 0, 0, 0.8); }
+
+                #rt-coverart-panel {
+                    display: none;
+                    position: fixed;
+                    inset: 0;
+                    background-color: rgba(0, 0, 0, 0.85);
+                    z-index: 10000;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                    box-sizing: border-box;
+                }
+                #rt-coverart-panel.rt-coverart-modal-visible { display: flex; }
+                .rt-ca-panel-card {
+                    background: #1f1f23;
+                    color: #fff;
+                    border-radius: 16px;
+                    width: min(92vw, 440px);
+                    max-height: 85vh;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                    padding: 16px;
+                    box-sizing: border-box;
+                }
+                .rt-ca-hist-list {
+                    flex: 1 1 auto;
+                    min-height: 0;
+                    max-height: 45vh;
+                    overflow-y: auto;
+                    overscroll-behavior: contain;
+                    -webkit-overflow-scrolling: touch;
+                    padding-right: 4px;
+                }
+                .rt-ca-panel-card h3 { margin: 0 0 10px 0; font-size: 16px; }
+                .rt-ca-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; font-size: 14px; }
+                .rt-ca-row select { background: #2f2f35; color: #fff; border: 0; border-radius: 8px; padding: 6px 8px; font-size: 14px; }
+                .rt-ca-hist-item { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 10px; cursor: pointer; }
+                .rt-ca-hist-item:hover { background: rgba(255, 255, 255, 0.08); }
+                .rt-ca-hist-item img { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0; max-height: none; box-shadow: none; }
+                .rt-ca-hist-text { min-width: 0; flex: 1; text-align: left; }
+                .rt-ca-hist-text div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .rt-ca-hist-sub { font-size: 12px; opacity: 0.6; }
+                .rt-ca-empty { opacity: 0.55; font-size: 13px; padding: 8px 0; }
 
                 #rt-coverart-container-phone {
                     display: none;
@@ -78,13 +193,15 @@
                     #rt-coverart-container-phone {
                         display: flex;
                         width: 90%;
-                        margin: auto;
+                        margin-left: auto;
+                        margin-right: auto;
                         margin-bottom: 20px;
                         min-height: 70px;
                         background-color: var(--color-1-transparent);
                         backdrop-filter: blur(5px);
                         padding: 8px;
                         box-sizing: border-box;
+                        position: relative;
                         flex-direction: row;
                         align-items: center;
                         justify-content: flex-start;
@@ -95,6 +212,10 @@
                         height: 62px;
                         min-width: 62px;
                     }
+                    #rt-coverart-container-phone .rt-coverart-menu-btn {
+                        margin-left: auto;
+                    }
+                    #rt-coverart-container-phone .rt-coverart-caption { flex: 1; }
                     #rt-coverart-container-phone .rt-coverart-caption {
                         display: -webkit-box;
                         -webkit-box-orient: vertical;
@@ -155,6 +276,14 @@
                     #rt-coverart-container-desktop:hover .rt-coverart-caption {
                         opacity: 1;
                     }
+                    #rt-coverart-container-desktop .rt-coverart-menu-btn {
+                        position: absolute;
+                        top: 12px;
+                        right: 12px;
+                        opacity: 0;
+                        transition: 0.2s ease opacity;
+                    }
+                    #rt-coverart-container-desktop:hover .rt-coverart-menu-btn { opacity: 1; }
                 }
             `)
             .appendTo('head');
@@ -164,6 +293,7 @@
         return '<div id="' + id + '" class="rt-coverart-box">' +
                     '<img src="' + defaultUrl + '" alt="Cover art">' +
                     '<div class="rt-coverart-caption">' + WAITING_TOOLTIP + '</div>' +
+                    '<button type="button" class="rt-coverart-menu-btn" title="History &amp; settings">&#9835;</button>' +
                 '</div>';
     }
 
@@ -186,6 +316,7 @@
             const $afColumn = $afWrapper.length ? $afWrapper.parent() : $();
             if ($afWrapper.length && $afColumn.length) {
                 $afColumn.css('flex-direction', 'column');
+                $afWrapper.css('overflow', 'hidden');
                 $afWrapper.after(boxHtml('rt-coverart-container-desktop', defaultUrl));
             } else {
                 ok = false;
@@ -195,8 +326,216 @@
         return ok;
     }
 
+    const SETTINGS_KEY = 'rtCoverart.settings';
+    const HISTORY_KEY = 'rtCoverart.history';
+    const HISTORY_MAX = 10;
+    const settings = { enabled: true, source: 'both' };
+    let history = [];
+    let currentResult = null;
+
+    function loadStorage() {
+        try {
+            const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+            if (s && typeof s === 'object') {
+                if (typeof s.enabled === 'boolean') settings.enabled = s.enabled;
+                if (['both', 'rt', 'ps'].indexOf(s.source) >= 0) settings.source = s.source;
+            }
+        } catch (e) {  }
+        try {
+            const h = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+            if (Array.isArray(h)) history = h.slice(0, HISTORY_MAX);
+        } catch (e) {  }
+    }
+
+    function saveSettings() {
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {  }
+    }
+
+    function saveHistory() {
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (e) {  }
+    }
+
+    function addHistory(result) {
+        const entry = {
+            artist: result.artistName || '',
+            title: result.trackName || '',
+            album: result.collectionName || '',
+            year: result.year || '',
+            artwork: result.artwork,
+            artworkBig: result.artworkBig || result.artwork,
+            storeUrl: result.storeUrl || '',
+            source: result.source || '',
+            freq: (lastFreq !== null && lastFreq !== undefined) ? lastFreq : '',
+            ts: Date.now()
+        };
+        if (history.length && history[0].artist === entry.artist && history[0].title === entry.title) {
+            history[0] = entry;
+        } else {
+            history.unshift(entry);
+            if (history.length > HISTORY_MAX) history.length = HISTORY_MAX;
+        }
+        saveHistory();
+        if ($('#rt-coverart-panel').hasClass('rt-coverart-modal-visible')) renderPanel();
+    }
+
+    function formatTime(ts) {
+        const d = new Date(ts);
+        return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+
+    function createModal() {
+        if (!$('#rt-coverart-modal').length) {
+            $('body').append(
+                '<div id="rt-coverart-modal"><div class="rt-ca-card">' +
+                    '<img id="rt-coverart-modal-img" src="" alt="Cover art">' +
+                    '<div class="rt-ca-title"></div>' +
+                    '<div class="rt-ca-artist"></div>' +
+                    '<div class="rt-ca-album"></div>' +
+                    '<div class="rt-ca-links"></div>' +
+                '</div></div>' +
+                '<div id="rt-coverart-panel"><div class="rt-ca-panel-card"></div></div>'
+            );
+
+            $('#rt-coverart-modal').on('click', function (e) {
+                if (e.target === this) closeModal();
+            });
+            $('#rt-coverart-panel').on('click', function (e) {
+                if (e.target === this) closePanel();
+            });
+
+            $(document).on('keydown', function (e) {
+                if (e.key === 'Escape') { closeModal(); closePanel(); }
+            });
+        }
+
+        $(document).on('click', '.rt-coverart-box img', function () {
+            if (currentResult) openModal(currentResult);
+        });
+        $(document).on('click', '.rt-coverart-menu-btn', function (e) {
+            e.stopPropagation();
+            openPanel();
+        });
+    }
+
+    function linkEl(label, url) {
+        return $('<a target="_blank" rel="noopener noreferrer"></a>').attr('href', url).text(label);
+    }
+
+    function openModal(info) {
+        const big = info.artworkBig || (info.artwork || '').replace('300x300bb', '600x600bb');
+        $('#rt-coverart-modal-img').attr('src', big);
+        $('#rt-coverart-modal .rt-ca-title').text(info.title || '');
+        $('#rt-coverart-modal .rt-ca-artist').text(info.artist || '');
+        const albumLine = [info.album, info.year].filter(Boolean).join(' · ');
+        $('#rt-coverart-modal .rt-ca-album').text(albumLine);
+
+        const q = encodeURIComponent(((info.artist || '') + ' ' + (info.title || '')).trim());
+        const $links = $('#rt-coverart-modal .rt-ca-links').empty();
+        $links.append(linkEl('YouTube', 'https://www.youtube.com/results?search_query=' + q));
+        $links.append(linkEl('Spotify', 'https://open.spotify.com/search/' + q));
+        if (info.storeUrl) $links.append(linkEl(info.source || 'Open', info.storeUrl));
+
+        $('#rt-coverart-modal').addClass('rt-coverart-modal-visible');
+    }
+
+    function closeModal() {
+        $('#rt-coverart-modal').removeClass('rt-coverart-modal-visible');
+    }
+
+    function openPanel() {
+        renderPanel();
+        $('#rt-coverart-panel').addClass('rt-coverart-modal-visible');
+    }
+
+    function closePanel() {
+        $('#rt-coverart-panel').removeClass('rt-coverart-modal-visible');
+    }
+
+    function renderPanel() {
+        const $card = $('#rt-coverart-panel .rt-ca-panel-card').empty();
+
+        $card.append('<h3>Cover art settings</h3>');
+
+        const $enabled = $('<input type="checkbox">').prop('checked', settings.enabled).on('change', function () {
+            settings.enabled = this.checked;
+            saveSettings();
+            if (!settings.enabled) {
+                clearToDefault();
+            } else {
+                channels.rt0.lastText = null;
+                channels.rt1.lastText = null;
+                psSeq = [];
+                rtHasSong = false;
+            }
+        });
+        $card.append($('<label class="rt-ca-row"><span>Enable cover art</span></label>').append($enabled));
+
+        const $source = $('<select>')
+            .append('<option value="both">RT + PS fallback</option>')
+            .append('<option value="rt">RadioText only</option>')
+            .append('<option value="ps">PS only</option>')
+            .val(settings.source)
+            .on('change', function () {
+                settings.source = this.value;
+                saveSettings();
+                psSeq = [];
+                rtHasSong = false;
+            });
+        $card.append($('<label class="rt-ca-row"><span>Song info source</span></label>').append($source));
+
+        $card.append('<h3 style="margin-top:16px">Recently played</h3>');
+        if (!history.length) {
+            $card.append('<div class="rt-ca-empty">No songs detected yet.</div>');
+        } else {
+            const $list = $('<div class="rt-ca-hist-list"></div>');
+            $card.append($list);
+            history.forEach(function (h) {
+                const sub = formatTime(h.ts) + (h.freq !== '' ? ' · ' + h.freq + ' MHz' : '');
+                const $item = $('<div class="rt-ca-hist-item"></div>')
+                    .append($('<img alt="">').attr('src', h.artwork))
+                    .append(
+                        $('<div class="rt-ca-hist-text"></div>')
+                            .append($('<div></div>').text(h.title))
+                            .append($('<div class="rt-ca-hist-sub"></div>').text(h.artist))
+                            .append($('<div class="rt-ca-hist-sub"></div>').text(sub))
+                    )
+                    .on('click', function () { closePanel(); openModal(h); });
+                $list.append($item);
+            });
+            $card.append($('<div class="rt-ca-links" style="margin-top:12px"></div>').append(
+                $('<button type="button" class="rt-ca-btn">Clear history</button>').on('click', function () {
+                    history = [];
+                    saveHistory();
+                    renderPanel();
+                })
+            ));
+        }
+
+        $card.append($('<div class="rt-ca-links" style="margin-top:12px"></div>').append(
+            $('<button type="button" class="rt-ca-btn">Close</button>').on('click', closePanel)
+        ));
+    }
+
+    function resetDesktopStyles() {
+        const $afWrapper = $('#af-list').closest('.panel-100');
+        const $afColumn = $afWrapper.length ? $afWrapper.parent() : $();
+        $('#rt-coverart-container-desktop').css({ width: '', height: '' });
+        $afWrapper.css({ height: '', overflow: '' });
+        $('#af-list').css({ 'max-height': '', 'margin-bottom': '' });
+        $afColumn.css('flex-direction', '');
+    }
+
     function matchDesktopHeights() {
-        if (window.innerWidth <= 768) return;
+        if (window.innerWidth <= 768) {
+            resetDesktopStyles();
+            return;
+        }
+
+        const $wrap = $('#af-list').closest('.panel-100');
+        if ($wrap.length) {
+            $wrap.css('overflow', 'hidden');
+            $wrap.parent().css('flex-direction', 'column');
+        }
 
         const $desktopBox = $('#rt-coverart-container-desktop');
         const $afWrapper = $('#af-list').closest('.panel-100');
@@ -222,9 +561,9 @@
 
             const $afHeader = $afWrapper.children('h2').first();
             const headerHeight = $afHeader.length ? $afHeader.outerHeight(true) : 0;
-            const listHeight = afHeight - headerHeight;
+            const listHeight = afHeight - headerHeight - CONFIG.afBottomGap;
             if (listHeight > 0) {
-                $('#af-list').css('max-height', listHeight + 'px');
+                $('#af-list').css({ 'max-height': listHeight + 'px', 'margin-bottom': CONFIG.afBottomGap + 'px' });
             }
         }
     }
@@ -233,6 +572,7 @@
 
     function maybeMatchDesktopHeights() {
         const now = Date.now();
+        if (window.innerWidth <= 768) return;
         if (now - lastHeightCheck < 1000) return;
         lastHeightCheck = now;
         matchDesktopHeights();
@@ -247,6 +587,7 @@
     function clearToDefault() {
         currentSongKey = null;
         currentSongChannel = null;
+        currentResult = null;
         latestRequestId = ++requestCounter;
         showArt(CONFIG.defaultImage || DEFAULT_IMAGE_URL, WAITING_TOOLTIP);
     }
@@ -256,6 +597,8 @@
         clearTimeout(channels.rt1.timer);
         channels.rt0.lastText = null;
         channels.rt1.lastText = null;
+        rtHasSong = false;
+        psSeq = [];
         clearToDefault();
     }
 
@@ -270,7 +613,7 @@
     }
 
     function collapseRepeat(text) {
-        const match = text.match(/^(.+?)\s*(?:[-–—,;]\s*)?\1$/i);
+        const match = text.match(/^(.+?)(?:\s*[-–—,;|]?\s*\1)+$/i);
         return match ? match[1].trim() : text;
     }
 
@@ -307,11 +650,21 @@
         const tooltip = (result.artistName && result.trackName)
             ? `${result.artistName} — ${result.trackName}`
             : '';
+        currentResult = {
+            artist: result.artistName || '',
+            title: result.trackName || '',
+            album: result.collectionName || '',
+            year: result.year || '',
+            artwork: result.artwork,
+            artworkBig: result.artworkBig || result.artwork,
+            storeUrl: result.storeUrl || '',
+            source: result.source || ''
+        };
         showArt(result.artwork, tooltip);
+        addHistory(result);
     }
 
-    function lookupArt(channelName, artist, title) {
-        const key = `${artist.toLowerCase()}|||${title.toLowerCase()}`;
+    function runLookup(channelName, key, params) {
         if (key === currentSongKey) return;
 
         const requestId = ++requestCounter;
@@ -322,14 +675,73 @@
             return;
         }
 
-        $.getJSON('/radiotext-coverart/get', { artist, title })
+        $.getJSON('/radiotext-coverart/get', params)
             .done(function (result) {
                 localCache[key] = result;
                 applyResult(requestId, channelName, key, result);
             })
             .fail(function () {
-                console.warn('RadioText Cover Art: lookup failed for', artist, '-', title);
+                console.warn('RadioText Cover Art: lookup failed for', params);
             });
+    }
+
+    function lookupArt(channelName, artist, title) {
+        runLookup(channelName, `${artist.toLowerCase()}|||${title.toLowerCase()}`, { artist, title });
+    }
+
+    const PS_MAX_FRAMES = 24;
+    const PS_STALE_MS = 15000;
+    let psSeq = [];
+    let rtHasSong = false;
+
+    function psWordKey(text) {
+        const words = text.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+            .split(/[^a-z0-9]+/).filter(Boolean);
+        return Array.from(new Set(words)).sort().join(' ');
+    }
+
+    function mergePsChunks(chunks) {
+        let out = chunks[0];
+        for (let i = 1; i < chunks.length; i++) {
+            const next = chunks[i];
+            let merged = false;
+            for (let k = Math.min(out.length, next.length) - 1; k >= 3; k--) {
+                if (out.endsWith(next.slice(0, k))) {
+                    out += next.slice(k);
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged) out += ' ' + next;
+        }
+        return out.replace(/\s+/g, ' ').trim();
+    }
+
+    function handlePs(psRaw) {
+        if (rtHasSong) return;
+        const ps = (psRaw || '').toString().replace(/[_?]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!ps) return;
+
+        const now = Date.now();
+        const last = psSeq[psSeq.length - 1];
+        if (last && last.text === ps) return;
+        if (last && now - last.ts > PS_STALE_MS) psSeq = [];
+
+        psSeq.push({ text: ps, ts: now });
+        if (psSeq.length > PS_MAX_FRAMES) psSeq = [psSeq[psSeq.length - 1]];
+
+        const texts = psSeq.map(function (f) { return f.text; });
+        let j = -1;
+        for (let i = 2; i < texts.length; i++) {
+            if (texts[i] === texts[0]) { j = i; break; }
+        }
+        if (j < 0) return;
+
+        const full = mergePsChunks(texts.slice(0, j));
+        psSeq = [psSeq[psSeq.length - 1]];
+        if (full.length < 6 || full.split(' ').length < 2) return;
+
+        runLookup('ps', 'ps|||' + psWordKey(full), { q: full });
     }
 
     function processChannel(channelName, rawText) {
@@ -357,12 +769,18 @@
         }
 
         if (pair) {
+            rtHasSong = true;
             lookupArt(channelName, pair.artist, pair.title);
         }
     }
 
     function handleParsedData(parsedData) {
         maybeMatchDesktopHeights();
+
+        if (!settings.enabled) {
+            if (typeof parsedData.freq !== 'undefined') lastFreq = parsedData.freq;
+            return;
+        }
 
         if (typeof parsedData.freq !== 'undefined') {
             if (lastFreq !== null && parsedData.freq !== lastFreq) {
@@ -371,8 +789,12 @@
             lastFreq = parsedData.freq;
         }
 
+        if (settings.source !== 'rt' && typeof parsedData.ps !== 'undefined') handlePs(parsedData.ps);
+
         const liveIsRt0 = parsedData.rt_flag === 0;
         const order = liveIsRt0 ? ['rt1', 'rt0'] : ['rt0', 'rt1'];
+
+        if (settings.source === 'ps') return;
 
         order.forEach(function (channelName) {
             if (typeof parsedData[channelName] !== 'undefined') {
@@ -397,7 +819,8 @@
                 return;
             }
 
-            if (typeof parsedData.rt0 === 'undefined' && typeof parsedData.rt1 === 'undefined' && typeof parsedData.freq === 'undefined') return;
+            if (typeof parsedData.rt0 === 'undefined' && typeof parsedData.rt1 === 'undefined' &&
+                typeof parsedData.freq === 'undefined' && typeof parsedData.ps === 'undefined') return;
             handleParsedData(parsedData);
         });
     }
@@ -405,18 +828,23 @@
     let resizeTimer = null;
 
     function init() {
+        loadStorage();
         injectStyles();
         if (!createContainers()) {
             setTimeout(init, 250);
             return;
         }
 
+        createModal();
+
         matchDesktopHeights();
         setTimeout(matchDesktopHeights, 1000);
 
-        $(window).on('resize', function () {
+        $(window).on('resize orientationchange', function () {
+            if (window.innerWidth <= 768) resetDesktopStyles();
             clearTimeout(resizeTimer);
             resizeTimer = setTimeout(matchDesktopHeights, 200);
+            setTimeout(matchDesktopHeights, 700);
         });
 
         attachSocketListener();
