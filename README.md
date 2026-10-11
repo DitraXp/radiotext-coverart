@@ -53,7 +53,7 @@ Results are cached on the server for an hour.
    ```
    (`README.md` doesn't need to be copied — it's just documentation.)
 4. Start the webserver. You should see a console line like:
-   `Plugin RadioText Cover Art 2.5 initialized successfully.`
+   `Plugin RadioText Cover Art 2.6 initialized successfully.`
 5. Make sure it's enabled under admin **Settings → Plugins**.
 6. Restart the webserver once more (server-side scripts load at startup)
    and reload the page in your browser.
