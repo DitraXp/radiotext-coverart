@@ -22,7 +22,7 @@ identified.
   a fallback when nothing is found. Both are free and need no API key.
 - **Info card** — tap the cover for a larger picture with title, artist,
   album and year (year when available), plus YouTube and Spotify search
-  buttons.
+  buttons and a link to the song on Apple Music or Deezer.
 - **History** — the last 10 detected songs with cover, time and frequency.
   Tap one to open its info card. Saved in your browser.
 - **Settings panel** — the small ♫ button on the cover (on desktop it
