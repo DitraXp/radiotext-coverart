@@ -1,102 +1,107 @@
-# RadioText Cover Art — Plugin for FM-DX-Webserver
+# RadioText Cover Art 2.1 — Plugin for FM-DX Webserver
 
-Shows cover art for the song that's currently playing, detected from the
-station's RDS data. A default picture is shown whenever no song is
-identified.
+RadioText Cover Art detects the song broadcast through RDS RadioText or dynamic PS and displays verified artwork inside the FM-DX Webserver interface. It keeps the original zero-key setup while adding multi-provider lookup, station-aware parsing, flexible placement and administrator defaults.
 
-- **Phones:** a full-width panel right after the RADIOTEXT panel.
-- **Desktop:** its own square box below the AF (alternate frequencies) card,
-  sized to line up with the TX info panel.
+## Highlights
 
-## Features
+- RadioText and dynamic-PS reconstruction with RT priority.
+- Candidate scoring for `Artist — Title`, `Title — Artist`, labeled metadata and common separator variants.
+- Transliteration-aware parsing for Latin-character metadata, including Greeklish-style transliterations.
+- Multilingual metadata and collaboration markers, including `by`, `von`, `par`, `por`, `with`, `mit`, `avec`, `con` and `com`.
+- Per-station learned and manual parsing profiles.
+- Apple Music, Deezer, TheAudioDB and MusicBrainz/Cover Art Archive sources.
+- Persistent artwork cache, negative cache, retry control and in-flight request deduplication.
+- Recent-song history and an expandable information card with provider and YouTube links.
+- Administrator defaults stored under `plugins_configs`, with browser-specific overrides for listeners.
 
-- **Song detection from RadioText (RT)** — understands `Artist - Title` and
-  `Title - Artist`, ignores prefixes like `Now: `, and copes with RT that
-  repeats the song several times.
-- **Multiple artists** — `A/B/C`, `A & B`, `A feat. B` etc. are searched by
-  the lead artist plus the title.
-- **PS fallback** — if a station sends no usable RT but scrolls the song in
-  its 8-character PS ("dynamic PS"), the plugin assembles the PS chunks and
-  searches for the song. Only used when RT gives nothing.
-- **Two artwork sources** — Apple Music (iTunes Search API) first, Deezer as
-  a fallback when nothing is found. Both are free and need no API key.
-- **Info card** — tap the cover for a larger picture with title, artist,
-  album and year (year when available), plus YouTube and Spotify search
-  buttons and a link to the song on Apple Music or Deezer.
-- **History** — the last 10 detected songs with cover, time and frequency.
-  Tap one to open its info card. Saved in your browser.
-- **Settings panel** — the small ♫ button on the cover (on desktop it
-  appears when you hover over the cover) opens a panel with:
-  - **Enable cover art** on/off switch
-  - **Song info source:** *RT + PS fallback*, *RadioText only* or *PS only*
-  - the history list (only the list scrolls) and a *Clear history* button
+## Layouts
 
-  Settings and history are stored per browser, so each device has its own.
-- **Layout fixes** — rotating a phone from landscape back to portrait no
-  longer leaves a big gap, and the AF list keeps a bottom gap so the last
-  frequency isn't clipped by the rounded corners.
+- **Separate panel** next to RadioText, PS or the AF list.
+- **Inside selected panel — edge-to-edge**, preserving the established 2.0 appearance.
+- **Inside selected panel — inset**, enabled by setting **Inside panel inset** above `0`; the cover remains square, gains rounded corners and pushes the remaining panel content in the selected direction.
+- **Freeform overlay** with dragging, resizing and optional pinning relative to the nearest interface panel.
+- VisualEQ-aware PS docking and responsive mobile behavior.
 
-Results are cached on the server for an hour.
+## Cover sources
 
-## Install / update
+Sources are tried in the following fixed order and can be enabled independently:
 
-1. Stop your fm-dx-webserver.
-2. Delete the existing `radiotext-coverart.js` file and `radiotext-coverart/`
-   folder from your `plugins/` folder.
-3. Copy these into `plugins/`, keeping the structure:
-   ```
+1. Apple Music / iTunes Search
+2. Deezer
+3. TheAudioDB
+4. MusicBrainz / Cover Art Archive
+
+TheAudioDB participates in the ordered search and benefits from the plugin's server cache and duplicate-request suppression.
+
+## Jingles, ads and default background
+
+The settings panel offers three behaviours when the current metadata is not recognised as a song:
+
+- keep the last cover;
+- show the current station logo;
+- show the configured default background.
+
+The default background can be the built-in placeholder, a static path under the webserver's `web` directory, or an `http://` / `https://` image URL. If a station logo is unavailable, the configured default background is used automatically.
+
+## Settings interface
+
+Version 2.1 includes a responsive, category-based settings panel with a theme-aware mica background. Placement, appearance, detection, cover sources, station behaviour, storage and history are presented in separate sections using the active FM-DX theme colors.
+
+| Area | Main controls |
+|---|---|
+| Placement | Host panel, before/after position, separate/inside/overlay mode, inset and content gap |
+| Appearance | Jingle/ad behaviour, default image, waiting-message opacity, cover backdrop and blur |
+| Song detection | RT/PS source, confidence, stability delay, retry interval and Dynamic PS analysis |
+| Cover sources | Apple Music, Deezer, TheAudioDB and MusicBrainz / Cover Art Archive |
+| Current station | Manual RT order and Dynamic PS parsing mode |
+| Storage | Persistent artwork cache, diagnostics and recent-song history |
+
+The **Waiting message background** control offers 0%, 25%, 50%, 75% and 100% opacity and applies consistently to the built-in placeholder, a custom image and the station logo.
+
+## Install or update
+
+1. Stop FM-DX Webserver.
+2. Replace the existing `radiotext-coverart.js` file and `radiotext-coverart/` folder in `plugins/`.
+3. Keep this structure:
+
+   ```text
    plugins/
      radiotext-coverart.js
      radiotext-coverart/
        radiotext-coverart.js
        radiotext-coverart_server.js
    ```
-   (`README.md` doesn't need to be copied — it's just documentation.)
-4. Start the webserver. You should see a console line like:
-   `Plugin RadioText Cover Art 2.6 initialized successfully.`
-5. Make sure it's enabled under admin **Settings → Plugins**.
-6. Restart the webserver once more (server-side scripts load at startup)
-   and reload the page in your browser.
 
-## Configuring
+4. Start the webserver and enable the plugin under **Settings → Plugins**.
+5. Restart the webserver once after installing or replacing the server-side file, then reload the browser page.
 
-Open `plugins/radiotext-coverart/radiotext-coverart.js` and edit the
-`CONFIG` object near the top:
+Existing browser preferences and server defaults are migrated automatically. Settings introduced in 2.1 use safe defaults until explicitly changed.
 
-| Setting | Default | What it does |
-|---|---|---|
-| `stableDelay` | `2500` | Milliseconds a given RT buffer must stay unchanged before it's looked up |
-| `boxSize` | `100` | Minimum size of the cover box in pixels (desktop). Phones automatically get a full-width stacked panel |
-| `afBottomGap` | `16` | Empty space in pixels kept below the AF list so the last frequency isn't cut off by the rounded corners |
-| `defaultImage` | `null` | Picture shown when no song is identified. `null` = built-in placeholder icon, or set a path to your own image (see below) |
+## Network access
 
-No restart is needed after editing this file — just reload the page.
+The server may contact the following domains, depending on the enabled sources:
 
-The on/off switch and the RT/PS source choice are not in `CONFIG`; they are
-set from the ♫ panel on the page itself.
+- `itunes.apple.com`
+- `api.deezer.com`
+- `www.theaudiodb.com`
+- `musicbrainz.org`
+- `coverartarchive.org`
 
-### Using your own default picture
+When a custom background is configured with an external HTTP(S) URL, visitors' browsers request that image directly from its host. Use a local path under the webserver's `web` directory if this external request is not desirable.
 
-Drop an image file anywhere under the webserver's `web` folder — for
-example `web/images/my-default-cover.png` — then set:
+## Troubleshooting
 
-```js
-defaultImage: '/images/my-default-cover.png'
-```
+- **Settings appear unchanged:** reload the page without cache after replacing the front-end file.
+- **Server defaults cannot be saved:** restart FM-DX Webserver after replacing `radiotext-coverart_server.js`, then sign in as administrator.
+- **No station logo appears:** confirm that the active webserver layout exposes the current logo through the standard `station-logo` image element. The configured default background is used when no logo is available.
+- **Dynamic PS is slow to identify a song:** PS must provide enough stable frames to reconstruct artist and title; RT matches continue to receive priority when both sources are enabled.
+- **A provider returns no cover:** enable another cover source or configure a retry interval. Negative results are cached briefly to avoid repeated provider requests.
 
-## Notes
+## Credits
 
-- Detection depends on what the station broadcasts. Jingles, news and ads
-  that don't look like `Artist - Title` are ignored; a song that neither
-  Apple Music nor Deezer knows shows the default picture.
-- The PS fallback needs the PS to cycle through at least two different
-  frames and the cycle to repeat once, so it takes a few seconds longer than
-  RT detection. A static station name is never searched.
-- The server needs outbound internet access to `itunes.apple.com` and
-  `api.deezer.com`.
+- Original plugin and the v1.x RT/PS foundation: **DitraXp / istvn**.
+- Version 2.1 architecture, detection pipeline, layouts, provider integration and compatibility work: **MCelliotG**.
 
 ## Uninstall
 
-Disable it in **Settings → Plugins**, stop the server, then delete
-`radiotext-coverart.js` and the `radiotext-coverart/` folder from
-`plugins/`.
+Disable the plugin, stop the webserver, then remove `radiotext-coverart.js` and the `radiotext-coverart/` directory from `plugins/`.
