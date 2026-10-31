@@ -35,13 +35,12 @@ TheAudioDB participates in the ordered search and benefits from the plugin's ser
 
 ## Jingles, ads and default background
 
-The settings panel offers three behaviours when the current metadata is not recognised as a song:
+The settings panel offers two behaviours when the current metadata is not recognised as a song:
 
 - keep the last cover;
-- show the current station logo;
 - show the configured default background.
 
-The default background can be the built-in placeholder, a static path under the webserver's `web` directory, or an `http://` / `https://` image URL. If a station logo is unavailable, the configured default background is used automatically.
+The default background can be the built-in placeholder, the current station logo, a static path under the webserver's `web` directory, or an `http://` / `https://` image URL. If the station-logo option is selected but no logo is available, the built-in placeholder is used automatically.
 
 ## Settings interface
 
@@ -93,7 +92,7 @@ When a custom background is configured with an external HTTP(S) URL, visitors' b
 
 - **Settings appear unchanged:** reload the page without cache after replacing the front-end file.
 - **Server defaults cannot be saved:** restart FM-DX Webserver after replacing `radiotext-coverart_server.js`, then sign in as administrator.
-- **No station logo appears:** confirm that the active webserver layout exposes the current logo through the standard `station-logo` image element. The configured default background is used when no logo is available.
+- **No station logo appears:** confirm that the active webserver layout exposes the current logo through the standard `station-logo` image element. The built-in placeholder is used when no logo is available.
 - **Dynamic PS is slow to identify a song:** PS must provide enough stable frames to reconstruct artist and title; RT matches continue to receive priority when both sources are enabled.
 - **A provider returns no cover:** enable another cover source or configure a retry interval. Negative results are cached briefly to avoid repeated provider requests.
 
