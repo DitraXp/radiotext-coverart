@@ -21,12 +21,12 @@ const CONFIG_PATH = path.join(configDir, 'radiotext-coverart.json');
 const PLUGIN_HEADER = 'radiotext-coverart';
 const MAX_CONFIG_BYTES = 64 * 1024;
 const ALLOWED_ADMIN_DEFAULTS = new Set([
-    'stableDelay', 'defaultImage', 'anchor', 'side', 'placementMode', 'insideInset', 'gap',
+    'stableDelay', 'defaultImage', 'defaultBackgroundMode', 'anchor', 'side', 'placementMode', 'insideInset', 'gap',
     'overlayX', 'overlayY', 'overlayWidth', 'overlayHeight',
     'overlayPinned', 'overlayPinAnchor', 'overlayPinOffsetX', 'overlayPinOffsetY',
     'overlayViewportX', 'overlayViewportY',
-    'enabled', 'songSource', 'useITunes', 'useDeezer', 'useMusicBrainz', 'useTheAudioDB', 'parsePs', 'idleBehaviour', 'retainLastArt', 'showCaption', 'waitingBackgroundOpacity',
-    'debugLogging', 'persistentCache', 'minConfidence', 'noArtworkRetrySeconds',
+    'enabled', 'songSource', 'useITunes', 'useDeezer', 'useMusicBrainz', 'useTheAudioDB', 'parsePs', 'idleBehaviour', 'retainLastArt', 'showCaption', 'showNoRdsMessage', 'showNoMetadataMessage', 'showWaitingMessage', 'waitingBackgroundOpacity',
+    'debugLogging', 'persistentCache', 'cacheLimit', 'minConfidence', 'noArtworkRetrySeconds',
     'panelBackdrop', 'backdropBlur', 'rtPriorityMs'
 ]);
 let sharedConfig = {};
@@ -43,7 +43,7 @@ function validatedAdminDefaults(input) {
     if (result.placementMode && !['separate', 'inside', 'overlay'].includes(result.placementMode)) delete result.placementMode;
     if (result.overlayPinAnchor && !['ps', 'station', 'radiotext', 'af'].includes(result.overlayPinAnchor)) delete result.overlayPinAnchor;
     if (result.panelBackdrop && !['off', 'ps', 'rt', 'both'].includes(result.panelBackdrop)) delete result.panelBackdrop;
-    ['gap', 'insideInset', 'stableDelay', 'minConfidence', 'noArtworkRetrySeconds', 'backdropBlur', 'rtPriorityMs', 'waitingBackgroundOpacity',
+    ['gap', 'insideInset', 'stableDelay', 'minConfidence', 'noArtworkRetrySeconds', 'backdropBlur', 'rtPriorityMs', 'waitingBackgroundOpacity', 'cacheLimit',
         'overlayX', 'overlayY', 'overlayWidth', 'overlayHeight', 'overlayPinOffsetX', 'overlayPinOffsetY',
         'overlayViewportX', 'overlayViewportY']
         .forEach(key => {
@@ -51,12 +51,18 @@ function validatedAdminDefaults(input) {
             else if (key in result) result[key] = Number(result[key]);
         });
     if (result.songSource && !['both', 'rt', 'ps'].includes(result.songSource)) delete result.songSource;
-    if (result.idleBehaviour && !['keep', 'stationLogo', 'default'].includes(result.idleBehaviour)) delete result.idleBehaviour;
+    if (result.idleBehaviour === 'stationLogo') {
+        result.idleBehaviour = 'default';
+        if (!result.defaultBackgroundMode) result.defaultBackgroundMode = 'stationLogo';
+    }
+    if (result.idleBehaviour && !['keep', 'default'].includes(result.idleBehaviour)) delete result.idleBehaviour;
+    if (result.defaultBackgroundMode && !['builtIn', 'stationLogo', 'custom'].includes(result.defaultBackgroundMode)) delete result.defaultBackgroundMode;
     if ('waitingBackgroundOpacity' in result && ![0, 25, 50, 75, 100].includes(result.waitingBackgroundOpacity)) {
         delete result.waitingBackgroundOpacity;
     }
     if ('insideInset' in result) result.insideInset = Math.min(8, Math.max(0, result.insideInset));
-    ['enabled', 'useITunes', 'useDeezer', 'useMusicBrainz', 'useTheAudioDB', 'parsePs', 'retainLastArt', 'showCaption', 'debugLogging', 'persistentCache',
+    if ('cacheLimit' in result && ![25, 50, 100, 250, 500].includes(result.cacheLimit)) delete result.cacheLimit;
+    ['enabled', 'useITunes', 'useDeezer', 'useMusicBrainz', 'useTheAudioDB', 'parsePs', 'retainLastArt', 'showCaption', 'showNoRdsMessage', 'showNoMetadataMessage', 'showWaitingMessage', 'debugLogging', 'persistentCache',
         'overlayPinned']
         .forEach(key => { if (key in result && typeof result[key] !== 'boolean') delete result[key]; });
     if ('defaultImage' in result && result.defaultImage !== null && typeof result.defaultImage !== 'string') delete result.defaultImage;

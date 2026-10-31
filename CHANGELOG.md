@@ -10,7 +10,7 @@
 - Optional four-sided `Inside panel inset` from 0–8 px, retaining the edge-to-edge layout at 0.
 - Freeform overlay placement with dragging, resizing and optional panel-relative pinning.
 - TheAudioDB as a keyless cover source, including album-art lookup.
-- Configurable behaviour during jingles and advertisements: keep the last cover, show the station logo or show the default background.
+- Configurable behaviour during jingles and advertisements: keep the last cover or show the selected default background.
 - Custom default backgrounds through a local web path or an HTTP(S) URL, with preview and built-in-image recovery.
 - Shared waiting-message background opacity choices: 0%, 25%, 50%, 75% and 100%.
 - Multilingual title/artist, metadata and collaboration markers for English, German, French, Spanish, Italian and Portuguese text.
@@ -33,6 +33,15 @@
 - Vertical alignment of PS content when a cover is docked inside the panel.
 - VisualEQ PS-container compatibility and content displacement.
 - RT/PS request cancellation, stale-result suppression and station-change cleanup.
+- RDS/metadata presence gating so empty frequencies and stations without usable PS/RT do not enter a perpetual search state.
+- Verified artwork retention while informational RT or incomplete Dynamic PS changes, preventing premature station-logo fallback.
+- Restored subtle translucency and backdrop blur on the outer settings card while keeping its inner sections legible.
+- Station logo available directly in the Default background selector, with automatic migration from the earlier jingle/ad option.
+- Added independent visibility controls for the No RDS, No PS/RadioText and Waiting for song info messages.
+- Added a subtle black frame behind transparent station logos in edge-to-edge inside-panel mode (`inset: 0`).
+- Debounced RDS/metadata absence messages during retuning so late PI and PS/RT packets cannot leave a stale “No RDS” caption visible.
+- Improved settings typography, enlarged the current frequency/PI label and added a configurable 25–500-entry artwork cache limit (250 by default).
+- Unified Recent songs with the selected cache limit and restores available older artwork entries from the persistent cache into the scrollable history list.
 
 ### Compatibility
 

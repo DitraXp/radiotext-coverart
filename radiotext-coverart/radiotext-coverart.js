@@ -14,16 +14,16 @@
     const PROFILE_KEY = 'radiotextCoverArtStationProfilesV4';
     const CACHE_KEY = 'radiotextCoverArtPersistentCacheV41';
     const HISTORY_KEY = 'radiotextCoverArtHistoryV1';
-    const HISTORY_LIMIT = 10;
     const CACHE_TTL = 7 * 24 * 60 * 60 * 1000;
     const NEGATIVE_CACHE_TTL = 10 * 60 * 1000;
-    const CACHE_LIMIT = 250;
+    const DEFAULT_CACHE_LIMIT = 250;
     const PINNED_OVERLAY_MAX_ZOOM_PX = 720;
     const DEFAULTS = {
         enabled: true,
         songSource: 'both',
         stableDelay: 2500,
         defaultImage: null,
+        defaultBackgroundMode: 'builtIn',
         anchor: 'radiotext',
         side: 'after',
         placementMode: 'separate',
@@ -47,9 +47,13 @@
         idleBehaviour: 'keep',
         retainLastArt: true,
         showCaption: true,
+        showNoRdsMessage: true,
+        showNoMetadataMessage: true,
+        showWaitingMessage: true,
         waitingBackgroundOpacity: 75,
         debugLogging: false,
         persistentCache: true,
+        cacheLimit: DEFAULT_CACHE_LIMIT,
         minConfidence: 40,
         noArtworkRetrySeconds: 0,
         panelBackdrop: 'off',
@@ -63,6 +67,13 @@
             if (value && !Object.prototype.hasOwnProperty.call(value, 'idleBehaviour') &&
                 typeof value.retainLastArt === 'boolean') {
                 value.idleBehaviour = value.retainLastArt ? 'keep' : 'default';
+            }
+            if (value?.idleBehaviour === 'stationLogo') {
+                value.idleBehaviour = 'default';
+                value.defaultBackgroundMode = 'stationLogo';
+            }
+            if (value && !value.defaultBackgroundMode) {
+                value.defaultBackgroundMode = value.defaultImage ? 'custom' : 'builtIn';
             }
             return value && !Array.isArray(value) && typeof value === 'object' ? value : {};
         } catch (error) { return {}; }
@@ -84,9 +95,9 @@
     let persistentCache = readStoredObject(CACHE_KEY, {});
     let songHistory = readStoredObject(HISTORY_KEY, []);
     if (!Array.isArray(songHistory)) songHistory = [];
-    songHistory = songHistory.slice(0, HISTORY_LIMIT);
     if (!stationProfiles || Array.isArray(stationProfiles) || typeof stationProfiles !== 'object') stationProfiles = {};
     if (!persistentCache || Array.isArray(persistentCache) || typeof persistentCache !== 'object') persistentCache = {};
+    hydrateHistoryFromCache();
     function debugLog(...args) {
         if (settings.debugLogging) console.info(...args);
     }
@@ -104,6 +115,13 @@
                 typeof received.retainLastArt === 'boolean') {
                 received.idleBehaviour = received.retainLastArt ? 'keep' : 'default';
             }
+            if (received.idleBehaviour === 'stationLogo') {
+                received.idleBehaviour = 'default';
+                received.defaultBackgroundMode = 'stationLogo';
+            }
+            if (!received.defaultBackgroundMode) {
+                received.defaultBackgroundMode = received.defaultImage ? 'custom' : 'builtIn';
+            }
             adminDefaults = received;
             isAdminSession = payload?.isAdmin === true;
         } catch (error) {
@@ -114,6 +132,7 @@
             ? { ...DEFAULTS, ...adminDefaults }
             : { ...DEFAULTS, ...adminDefaults, ...storedSettings() };
         delete settings.showHistory;
+        hydrateHistoryFromCache();
     }
 
     function userSettingOverrides(fullSettings) {
@@ -161,6 +180,11 @@
     let activeRtChannel = 'rt0';
     let lastFreq = null;
     let lastPi = null;
+    let rdsPresent = false;
+    let metadataPresent = false;
+    let availabilityTimer = null;
+    let availabilityMessageType = null;
+    let placeholderMessageType = 'waiting';
     let resizeObserver = null;
     let psObserver = null;
     let lastPsSocketAt = 0;
@@ -291,6 +315,7 @@
             .rt-coverart-box:hover .rt-coverart-caption { opacity: 1; }
             .rt-coverart-box.hide-caption .rt-coverart-caption { display: none; }
             .rt-coverart-box.rtca-empty .rt-coverart-caption { display: flex; }
+            .rt-coverart-box.rtca-empty.rtca-hide-state-message .rt-coverart-caption { display: none; }
             .rt-coverart-status {
                 position: absolute; left: 6px; right: 6px; bottom: 8px; z-index: 3;
                 padding: 3px 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -316,6 +341,10 @@
             }
             .rt-coverart-box.rtca-inside-panel img { border-radius: inherit; }
             .rt-coverart-box.rtca-inside-panel .rt-coverart-caption { inset: 0; border-radius: inherit; }
+            .rt-coverart-box.rtca-inside-panel.rtca-inside-flush.rtca-station-logo {
+                background: rgba(0,0,0,.22);
+                box-shadow: inset 0 0 0 1px rgba(0,0,0,.68) !important;
+            }
             .rtca-panel-content {
                 box-sizing: border-box; min-width: 0; min-height: 0; flex: 1 1 auto;
                 display: flex; flex-direction: column; justify-content: center;
@@ -368,10 +397,10 @@
                 width: min(860px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: hidden;
                 box-sizing: border-box; border-radius: 16px; color: var(--color-text);
                 display: flex; flex-direction: column;
-                background: linear-gradient(145deg, rgba(255,255,255,.055), rgba(255,255,255,.018)),
-                    color-mix(in srgb, var(--color-1) 88%, transparent);
+                background: linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.02)),
+                    color-mix(in srgb, var(--color-1) 82%, transparent);
                 border: 1px solid var(--color-4-transparent);
-                backdrop-filter: blur(14px) saturate(1.12); -webkit-backdrop-filter: blur(14px) saturate(1.12);
+                backdrop-filter: blur(12px) saturate(1.10); -webkit-backdrop-filter: blur(12px) saturate(1.10);
                 box-shadow: 0 22px 65px rgba(0,0,0,.52), 0 0 28px var(--color-4-transparent), inset 0 1px 0 rgba(255,255,255,.09);
             }
             .rtca-settings-card h3 { margin: 0; font-size: 17px; line-height: 1.2; }
@@ -407,7 +436,7 @@
                 background: linear-gradient(90deg, var(--color-4), var(--color-4-transparent), transparent);
                 opacity: .78;
             }
-            .rtca-section-title small { font-size: 9px; font-weight: 500; letter-spacing: 0; text-transform: none; opacity: .62; }
+            .rtca-section-title small { font-size: 12.5px; font-weight: 700; letter-spacing: 0; text-transform: none; opacity: .78; }
             .rtca-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
             .rtca-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; }
             .rtca-field.full { grid-column: 1 / -1; }
@@ -427,6 +456,8 @@
             .rtca-check-list { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; font-size: 12px; }
             .rtca-check-list.single { grid-template-columns: 1fr; }
             .rtca-check-list label { min-width: 0; display: flex; align-items: center; gap: 6px; }
+            .rtca-settings-card label, .rtca-settings-card label strong { text-transform: none !important; }
+            .rtca-settings-card label strong { font-weight: 600 !important; }
             .rtca-source-note { margin: -2px 0 8px; font-size: 10px; line-height: 1.35; opacity: .62; }
             .rtca-source-list { display: grid; gap: 6px; font-size: 12px; }
             .rtca-source-list label { display: flex; align-items: center; gap: 7px; }
@@ -845,7 +876,7 @@
         if (resizeObserver) resizeObserver.disconnect();
         const overlay = settings.placementMode === 'overlay' && canUseFreeformOverlay();
         const inside = settings.placementMode === 'inside' && window.innerWidth > 768;
-        $box.removeClass('rtca-inside-panel rtca-overlay').css({
+        $box.removeClass('rtca-inside-panel rtca-inside-flush rtca-overlay').css({
             position: 'relative', left: '', top: '', zIndex: '', margin: 0,
             borderRadius: inside ? '' : '15px'
         });
@@ -1076,7 +1107,7 @@
                 : `0 ${computed.borderTopRightRadius} ${computed.borderBottomRightRadius} 0`);
         const radius = inset > 0 ? '10px' : edgeRadius;
         const margin = inset > 0 ? `${inset}px` : '0px';
-        $box.addClass('rtca-inside-panel').css({
+        $box.addClass('rtca-inside-panel').toggleClass('rtca-inside-flush', inset === 0).css({
             display: 'flex', width: inset > 0 ? `${coverSize}px` : (isAf ? '100%' : `${coverSize}px`),
             height: inset > 0 ? `${coverSize}px` : (isAf ? `${coverSize}px` : '100%'),
             minHeight: inset > 0 || isAf ? `${coverSize}px` : '0px',
@@ -1095,12 +1126,41 @@
             anchor.style.alignItems = old.alignItems;
             anchor.style.overflow = old.overflow;
             anchor.style.padding = old.padding;
-            $box.removeClass('rtca-inside-panel').css('border-radius', '');
+            $box.removeClass('rtca-inside-panel rtca-inside-flush').css('border-radius', '');
         };
     }
 
     function saveSongHistory() {
         try { localStorage.setItem(HISTORY_KEY, JSON.stringify(songHistory)); } catch (error) { /* private mode/quota */ }
+    }
+
+    function hydrateHistoryFromCache() {
+        const combined = [...songHistory];
+        Object.values(persistentCache).forEach(entry => {
+            const result = entry?.result;
+            if (!result?.found || !result.artwork || !result.trackName) return;
+            combined.push({
+                artist: result.artistName || '', title: result.trackName,
+                album: result.collectionName || '', year: result.year || '',
+                artwork: result.artwork, artworkBig: result.artworkBig || result.artwork,
+                storeUrl: result.storeUrl || '', source: result.source || result.provider || '',
+                provider: result.provider || result.source || '', freq: '', ts: Number(entry.at) || 0
+            });
+        });
+        const seen = new Set();
+        songHistory = combined.sort((a, b) => Number(b.ts || 0) - Number(a.ts || 0)).filter(item => {
+            const key = `${item.artist || ''}\u0000${item.title || ''}\u0000${item.artwork || ''}`.toLocaleLowerCase();
+            if (!item.artwork || !item.title || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        }).slice(0, cacheLimitValue());
+        saveSongHistory();
+    }
+
+    function pruneSongHistory() {
+        songHistory = songHistory.slice(0, cacheLimitValue());
+        saveSongHistory();
+        renderSongHistory();
     }
 
     function historyEntry(result, fallbackArtist = '', fallbackTitle = '') {
@@ -1124,7 +1184,7 @@
         if (!entry.artwork || !entry.title) return;
         songHistory = songHistory.filter(item => !(item.artist === entry.artist && item.title === entry.title));
         songHistory.unshift(entry);
-        songHistory = songHistory.slice(0, HISTORY_LIMIT);
+        songHistory = songHistory.slice(0, cacheLimitValue());
         saveSongHistory();
         renderSongHistory();
     }
@@ -1188,11 +1248,11 @@
                             <div class="rtca-section-title">Appearance</div>
                             <div class="rtca-grid">
                                 <label class="rtca-field full"><span>Behaviour during jingles and ads:</span><select id="rtca-idle-behaviour">
-                                    <option value="keep">Keep last cover</option><option value="stationLogo">Show station logo</option>
-                                    <option value="default">Show default background</option>
+                                    <option value="keep">Keep last cover</option><option value="default">Show default background</option>
                                 </select></label>
                                 <label class="rtca-field full"><span>Default background:</span><select id="rtca-default-mode">
-                                    <option value="builtIn">Built-in placeholder</option><option value="custom">Custom image</option>
+                                    <option value="builtIn">Built-in placeholder</option><option value="stationLogo">Station logo</option>
+                                    <option value="custom">Custom image</option>
                                 </select></label>
                                 <label class="rtca-field full"><span>Waiting message background:</span><select id="rtca-waiting-opacity">
                                     <option value="0">0% — Transparent</option><option value="25">25%</option>
@@ -1209,11 +1269,23 @@
                                 </select></label>
                                 <label class="rtca-field"><span>Backdrop blur:</span><input id="rtca-backdrop-blur" type="number" min="0" max="30" step="1"></label>
                             </div>
-                            <div class="rtca-check-list single" style="margin-top:8px"><label><input id="rtca-caption" type="checkbox"> <strong>Show caption on hover</strong></label></div>
+                            <div class="rtca-check-list single" style="margin-top:8px">
+                                <label><input id="rtca-caption" type="checkbox"> <strong>Show song caption on hover</strong></label>
+                                <label><input id="rtca-message-no-rds" type="checkbox"> <strong>Show “No RDS detected”</strong></label>
+                                <label><input id="rtca-message-no-metadata" type="checkbox"> <strong>Show “No PS/RadioText detected”</strong></label>
+                                <label><input id="rtca-message-waiting" type="checkbox"> <strong>Show “Waiting for song info”</strong></label>
+                            </div>
                         </section>
 
                         <section class="rtca-section">
                             <div class="rtca-section-title">Storage &amp; diagnostics</div>
+                            <div class="rtca-grid" style="margin-bottom:8px">
+                                <label class="rtca-field full"><span>Artwork cache size:</span><select id="rtca-cache-limit">
+                                    <option value="25">25 covers</option><option value="50">50 covers</option>
+                                    <option value="100">100 covers</option><option value="250">250 covers (default)</option>
+                                    <option value="500">500 covers</option>
+                                </select></label>
+                            </div>
                             <div class="rtca-check-list single">
                                 <label><input id="rtca-persistent-cache" type="checkbox"> <strong>Keep artwork cache</strong></label>
                                 <label><input id="rtca-debug" type="checkbox"> <strong>Debug logging</strong></label>
@@ -1305,17 +1377,21 @@
     }
 
     function updateDefaultImageControls() {
-        const custom = $('#rtca-default-mode').val() === 'custom';
+        const mode = $('#rtca-default-mode').val();
+        const custom = mode === 'custom';
         $('#rtca-default-custom-row').toggle(custom);
         const preview = document.getElementById('rtca-default-preview');
         if (!preview) return;
-        const source = custom ? normalizeImageLocation($('#rtca-default-image').val()) : DEFAULT_IMAGE_URL;
+        const logo = stationLogoUrl();
+        const source = custom ? normalizeImageLocation($('#rtca-default-image').val()) :
+            (mode === 'stationLogo' ? (logo || DEFAULT_IMAGE_URL) : DEFAULT_IMAGE_URL);
         preview.onerror = () => {
             preview.onerror = null;
             preview.src = DEFAULT_IMAGE_URL;
             preview.title = 'Image could not be loaded; the built-in placeholder will be used.';
         };
-        preview.title = custom ? 'Default background preview' : 'Built-in placeholder';
+        preview.title = custom ? 'Default background preview' :
+            (mode === 'stationLogo' ? (logo ? 'Station logo' : 'Station logo unavailable; built-in placeholder will be used') : 'Built-in placeholder');
         preview.src = source || DEFAULT_IMAGE_URL;
     }
 
@@ -1346,8 +1422,8 @@
         $('#rtca-no-artwork-retry').val(String(settings.noArtworkRetrySeconds ?? DEFAULTS.noArtworkRetrySeconds));
         $('#rtca-backdrop').val(settings.panelBackdrop || 'off');
         $('#rtca-backdrop-blur').val(settings.backdropBlur ?? DEFAULTS.backdropBlur);
-        $('#rtca-idle-behaviour').val(settings.idleBehaviour || (settings.retainLastArt === false ? 'default' : 'keep'));
-        $('#rtca-default-mode').val(settings.defaultImage ? 'custom' : 'builtIn');
+        $('#rtca-idle-behaviour').val(settings.idleBehaviour === 'default' ? 'default' : 'keep');
+        $('#rtca-default-mode').val(settings.defaultBackgroundMode || (settings.defaultImage ? 'custom' : 'builtIn'));
         $('#rtca-waiting-opacity').val(String([0, 25, 50, 75, 100].includes(Number(settings.waitingBackgroundOpacity))
             ? Number(settings.waitingBackgroundOpacity) : DEFAULTS.waitingBackgroundOpacity));
         $('#rtca-default-image').val(settings.defaultImage || '');
@@ -1359,8 +1435,12 @@
         $('#rtca-audiodb').prop('checked', settings.useTheAudioDB !== false);
         $('#rtca-parse-ps').prop('checked', settings.parsePs);
         $('#rtca-caption').prop('checked', settings.showCaption);
+        $('#rtca-message-no-rds').prop('checked', settings.showNoRdsMessage !== false);
+        $('#rtca-message-no-metadata').prop('checked', settings.showNoMetadataMessage !== false);
+        $('#rtca-message-waiting').prop('checked', settings.showWaitingMessage !== false);
         $('#rtca-debug').prop('checked', Boolean(settings.debugLogging));
         $('#rtca-persistent-cache').prop('checked', settings.persistentCache !== false);
+        $('#rtca-cache-limit').val(String(cacheLimitValue()));
         const profile = stationProfile();
         $('#rtca-profile-order').val(profile.order || 'auto');
         $('#rtca-profile-ps-mode').val(profile.psMode || 'auto');
@@ -1386,7 +1466,8 @@
         settings.backdropBlur = Math.min(30, Math.max(0, Number($('#rtca-backdrop-blur').val()) || 0));
         settings.idleBehaviour = $('#rtca-idle-behaviour').val() || 'keep';
         settings.retainLastArt = settings.idleBehaviour === 'keep';
-        settings.defaultImage = $('#rtca-default-mode').val() === 'custom'
+        settings.defaultBackgroundMode = $('#rtca-default-mode').val() || 'builtIn';
+        settings.defaultImage = settings.defaultBackgroundMode === 'custom'
             ? normalizeImageLocation($('#rtca-default-image').val()) : null;
         settings.waitingBackgroundOpacity = Number($('#rtca-waiting-opacity').val()) || 0;
         settings.enabled = $('#rtca-enabled').prop('checked');
@@ -1395,8 +1476,14 @@
         settings.useTheAudioDB = $('#rtca-audiodb').prop('checked');
         settings.parsePs = $('#rtca-parse-ps').prop('checked');
         settings.showCaption = $('#rtca-caption').prop('checked');
+        settings.showNoRdsMessage = $('#rtca-message-no-rds').prop('checked');
+        settings.showNoMetadataMessage = $('#rtca-message-no-metadata').prop('checked');
+        settings.showWaitingMessage = $('#rtca-message-waiting').prop('checked');
         settings.debugLogging = $('#rtca-debug').prop('checked');
         settings.persistentCache = $('#rtca-persistent-cache').prop('checked');
+        settings.cacheLimit = Math.min(500, Math.max(25, Number($('#rtca-cache-limit').val()) || DEFAULT_CACHE_LIMIT));
+        pruneArtworkCache();
+        pruneSongHistory();
         const profile = stationProfile();
         profile.order = $('#rtca-profile-order').val() || 'auto';
         profile.psMode = $('#rtca-profile-ps-mode').val() || 'auto';
@@ -1412,6 +1499,11 @@
             if (!settings.enabled) clearToDefault(true);
             else if (!currentArtworkUrl) applyIdleBehaviour(true);
             applyCaptionSetting(); applyPanelBackdrop(); placeBox(); applyEnabledSetting(); closeSettings();
+            if (!currentArtworkUrl) {
+                if (!rdsPresent) setPlaceholderMessage('No RDS detected', 'noRds');
+                else if (!metadataPresent) setPlaceholderMessage('No PS/RadioText detected', 'noMetadata');
+                else setPlaceholderMessage(WAITING_TOOLTIP, 'waiting');
+            }
         } catch (error) {
             alert(`Could not save RadioText Cover Art settings.\n\n${error.message}`);
         }
@@ -1479,6 +1571,7 @@
             .toggleClass('rtca-empty', !isArtwork)
             .toggleClass('rtca-station-logo', displayMode === 'stationLogo')
             .attr('title', text || WAITING_TOOLTIP);
+        if (isArtwork) $('#rt-coverart-container').removeClass('rtca-hide-state-message');
         applyPanelBackdrop();
     }
 
@@ -1502,7 +1595,7 @@
     }
 
     function idleImage() {
-        if (settings.idleBehaviour === 'stationLogo') {
+        if (settings.defaultBackgroundMode === 'stationLogo') {
             const logo = stationLogoUrl();
             if (logo) return { url: logo, label: WAITING_TOOLTIP, mode: 'stationLogo' };
         }
@@ -1532,6 +1625,7 @@
         // This changes only the visual placeholder. Candidate observers,
         // in-flight requests and retry timers continue running normally.
         showArt(idle.url, idle.label, false, null, idle.mode);
+        setPlaceholderMessage(idle.label, 'waiting');
         return true;
     }
     function setStatus(text = '') {
@@ -1540,6 +1634,37 @@
         $box.toggleClass('rtca-busy', visible);
         $box.find('.rt-coverart-status').text(text);
         if (visible) $box.attr('title', text);
+    }
+
+    function setPlaceholderMessage(text, type = 'waiting') {
+        if (currentArtworkUrl) return;
+        const label = text || WAITING_TOOLTIP;
+        placeholderMessageType = type;
+        const visible = type === 'noRds' ? settings.showNoRdsMessage !== false :
+            (type === 'noMetadata' ? settings.showNoMetadataMessage !== false : settings.showWaitingMessage !== false);
+        $('#rt-coverart-container .rt-coverart-caption').text(label);
+        $('#rt-coverart-container').toggleClass('rtca-hide-state-message', !visible).attr('title', visible ? label : '');
+    }
+
+    function cancelAvailabilityMessage() {
+        clearTimeout(availabilityTimer);
+        availabilityTimer = null;
+        availabilityMessageType = null;
+    }
+
+    function scheduleAvailabilityMessage(text, type, delay = 1600) {
+        if (currentArtworkUrl || placeholderMessageType === type ||
+            (availabilityTimer && availabilityMessageType === type)) return;
+        cancelAvailabilityMessage();
+        availabilityMessageType = type;
+        availabilityTimer = setTimeout(() => {
+            availabilityTimer = null;
+            availabilityMessageType = null;
+            if (currentArtworkUrl) return;
+            if (type === 'noRds' && rdsPresent) return;
+            if (type === 'noMetadata' && (!rdsPresent || metadataPresent)) return;
+            setPlaceholderMessage(text, type);
+        }, delay);
     }
 
     function closeCoverLightbox() {
@@ -1630,15 +1755,20 @@
         Object.values(requestControllers).forEach(controller => controller?.abort());
         requestControllers.rt = null; requestControllers.ps = null;
         applyIdleBehaviour(force);
-        setStatus('Waiting RT…');
+        setStatus('');
     }
     function resetForNewStation() {
         Object.values(channels).forEach(channel => { clearTimeout(channel.timer); channel.lastText = null; });
         resetPsAssembly();
         lastObservedPsText = '';
         observedPsHistory = [];
-        lastValidRtAt = 0; clearToDefault(true);
-        if (settings.idleBehaviour === 'stationLogo') {
+        lastValidRtAt = 0;
+        rdsPresent = false;
+        metadataPresent = false;
+        cancelAvailabilityMessage();
+        clearToDefault(true);
+        scheduleAvailabilityMessage('No RDS detected', 'noRds', 1800);
+        if (settings.defaultBackgroundMode === 'stationLogo') {
             [250, 900].forEach(delay => setTimeout(() => {
                 if (!currentArtworkUrl && !currentSource) applyIdleBehaviour(true);
             }, delay));
@@ -2011,16 +2141,29 @@
             return null;
         }
         localCache[cacheKey] = entry.result;
+        pruneArtworkCache();
         return entry.result;
+    }
+
+    function cacheLimitValue() {
+        const value = Number(settings.cacheLimit);
+        return [25, 50, 100, 250, 500].includes(value) ? value : DEFAULT_CACHE_LIMIT;
+    }
+
+    function pruneArtworkCache() {
+        const limit = cacheLimitValue();
+        const persistentKeys = Object.keys(persistentCache)
+            .sort((a, b) => Number(persistentCache[b]?.at || 0) - Number(persistentCache[a]?.at || 0));
+        persistentKeys.slice(limit).forEach(key => delete persistentCache[key]);
+        const localKeys = Object.keys(localCache);
+        localKeys.slice(0, Math.max(0, localKeys.length - limit)).forEach(key => delete localCache[key]);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(persistentCache)); } catch (error) { /* quota/private mode */ }
     }
 
     function writeArtworkCache(cacheKey, result) {
         localCache[cacheKey] = result;
-        if (!settings.persistentCache) return;
-        persistentCache[cacheKey] = { at: Date.now(), result };
-        const keys = Object.keys(persistentCache).sort((a, b) => persistentCache[b].at - persistentCache[a].at);
-        keys.slice(CACHE_LIMIT).forEach(key => delete persistentCache[key]);
-        try { localStorage.setItem(CACHE_KEY, JSON.stringify(persistentCache)); } catch (error) { /* quota/private mode */ }
+        if (settings.persistentCache) persistentCache[cacheKey] = { at: Date.now(), result };
+        pruneArtworkCache();
     }
 
     async function requestCandidate(candidate, source, signal, forceRefresh = false) {
@@ -2109,7 +2252,7 @@
 
     async function lookupCandidates(candidates, source, forceRefresh = false) {
         candidates = rankCandidates(candidates).filter(candidate => candidate.confidence >= settings.minConfidence);
-        if (!candidates.length || !providersValue()) return;
+        if (!rdsPresent || !candidates.length || !providersValue()) return;
         clearTimeout(retryTimers[source]);
         retryTimers[source] = null;
         const requestId = ++requestIds[source];
@@ -2205,7 +2348,10 @@
                     : '[none]');
             if (candidates.length) lookupCandidates(candidates, 'rt');
             else if (channelName === activeRtChannel) {
-                applyIdleBehaviour(false, 'rt');
+                // Informational RT is not evidence that the song ended. Keep a
+                // verified cover until a new plausible song has actually been
+                // searched and found (or the station changes).
+                if (!currentArtworkUrl) applyIdleBehaviour(false, 'rt');
                 setStatus('');
             }
         }, settings.stableDelay);
@@ -2528,7 +2674,9 @@
                 acceptedFrames: psAssembly.frameCount,
                 frames: [...psAssembly.frames]
             });
-            applyIdleBehaviour(false, 'ps');
+            // A partial/informational Dynamic-PS cycle must not replace an
+            // already verified match with the station logo.
+            if (!currentArtworkUrl) applyIdleBehaviour(false, 'ps');
             setStatus('');
             return;
         }
@@ -2541,7 +2689,7 @@
     }
 
     function processPsFrame(rawFrame, source = 'socket') {
-        if (settings.enabled === false || settings.songSource === 'rt') return;
+        if (settings.enabled === false || settings.songSource === 'rt' || !rdsPresent) return;
         const now = Date.now();
         const observedPs = cleanText(rawFrame);
         if (observedPs) {
@@ -2646,18 +2794,56 @@
             }
             if (frequency) lastFreq = frequency;
         }
+        const hasPiField = typeof data.pi !== 'undefined' || typeof data.rds?.pi !== 'undefined' ||
+            typeof data.rdsPi !== 'undefined';
         const receivedPi = normalizedPi(data.pi ?? data.rds?.pi ?? data.rdsPi);
         if (receivedPi) {
             if (lastPi !== null && receivedPi !== lastPi) stationChanged = true;
             lastPi = receivedPi;
+            rdsPresent = true;
+        } else if (hasPiField && !rdsPresent) {
+            // A blank/invalid PI does not establish RDS presence. Once a valid
+            // PI has been decoded, keep that confirmation until retuning: weak
+            // reception can interleave valid PI packets with transient 0000s.
+            lastPi = null;
         }
         if (stationChanged) resetForNewStation();
+        // A valid PI in the same packet belongs to the newly tuned station.
+        if (receivedPi) {
+            lastPi = receivedPi;
+            rdsPresent = true;
+        }
+        if (!rdsPresent) {
+            clearTimeout(channels.rt0.timer);
+            clearTimeout(channels.rt1.timer);
+            clearTimeout(psAssembly.timer);
+            requestControllers.rt?.abort();
+            requestControllers.ps?.abort();
+            requestControllers.rt = null;
+            requestControllers.ps = null;
+            clearRetryTimers();
+            setStatus('');
+            scheduleAvailabilityMessage('No RDS detected', 'noRds', 1800);
+            return;
+        }
+        if (availabilityMessageType === 'noRds') cancelAvailabilityMessage();
+        const packetHasRtText = [data.rt0, data.rt1].some(value => Boolean(cleanText(value)));
+        const packetHasPsText = typeof data.ps !== 'undefined' && Boolean(cleanText(data.ps));
+        if (packetHasRtText || packetHasPsText) metadataPresent = true;
+        if (!metadataPresent) {
+            setStatus('');
+            if (placeholderMessageType === 'noRds') setPlaceholderMessage(WAITING_TOOLTIP, 'waiting');
+            scheduleAvailabilityMessage('No PS/RadioText detected', 'noMetadata', 1400);
+            return;
+        }
+        cancelAvailabilityMessage();
+        setPlaceholderMessage(WAITING_TOOLTIP, 'waiting');
         const liveIsRt0 = data.rt_flag === 0;
         activeRtChannel = liveIsRt0 ? 'rt0' : 'rt1';
         (liveIsRt0 ? ['rt1', 'rt0'] : ['rt0', 'rt1']).forEach(name => {
-            if (typeof data[name] !== 'undefined') processChannel(name, data[name]);
+            if (typeof data[name] !== 'undefined' && cleanText(data[name])) processChannel(name, data[name]);
         });
-        if (typeof data.ps !== 'undefined') {
+        if (typeof data.ps !== 'undefined' && packetHasPsText) {
             const ariaPs = document.getElementById('data-ps')?.getAttribute('aria-label')?.trim();
             if (ariaPs) processPsFrame(ariaPs, 'aria');
             else processPsFrame(data.ps, 'socket');
@@ -2714,6 +2900,7 @@
         psObserver?.disconnect();
         resizeObserver = null;
         psObserver = null;
+        cancelAvailabilityMessage();
         $('#rt-coverart-settings').removeClass('open');
         closeCoverLightbox();
         clearToDefault();
